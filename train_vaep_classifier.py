@@ -1,5 +1,6 @@
 import math
 import os
+import warnings
 import pandas as pd
 import socceraction.atomic.vaep.features as afs
 import socceraction.vaep.features as fs
@@ -8,6 +9,8 @@ import numpy as np
 from socceraction.atomic.vaep.base import AtomicVAEP
 from socceraction.vaep.base import VAEP
 from tqdm import tqdm
+
+warnings.filterwarnings('ignore')
 
 
 def _compute_features(games: pd.DataFrame, spadl_h5: str, features_h5: str, vaep: VAEP):
@@ -126,7 +129,7 @@ def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, 
            games
     """
     actions = []
-    for game_id in tqdm(games.game_id, "Loading game ids"):
+    for game_id in tqdm(games.game_id, "Loading game ids: "):
         action_i = pd.read_hdf(spadl_h5, f"actions/game_{game_id}")
         actions.append(action_i[["game_id"]])
     actions = pd.concat(actions)

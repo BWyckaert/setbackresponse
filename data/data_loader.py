@@ -17,11 +17,11 @@ def _select_competitions(competitions: pd.DataFrame) -> pd.DataFrame:
     """
     # Uncomment all wanted competitions
     all_competitions = [
-        # 'Italian first division',
-        # 'English first division',
-        # 'Spanish first division',
-        # 'French first division',
-        # 'German first division',
+        'Italian first division',
+        'English first division',
+        'Spanish first division',
+        'French first division',
+        'German first division',
         'European Championship',
         'World Cup'
     ]
@@ -88,6 +88,9 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
     spadl_h5 = os.path.join(datafolder, "spadl.h5")
 
     with pd.HDFStore(spadl_h5) as spadlstore:
+        # for key in spadlstore.keys():
+        #     if "actions/game_" in key:
+        #         del spadlstore[key]
         spadlstore["competitions"] = competitions
         spadlstore["games"] = games.reset_index(drop=True)
         spadlstore["teams"] = teams.reset_index(drop=True)
@@ -115,7 +118,7 @@ def load_and_convert_wyscout_data(atomic=True, download=False):
     if download:
         print("Downloading public Wyscout dataset...")
 
-    pwl = PublicWyscoutLoader(download)
+    pwl = PublicWyscoutLoader(download=download)
     competitions = pwl.competitions()
     selected_competitions = _select_competitions(competitions)
     games = _get_games_in_competitions(selected_competitions, pwl)
