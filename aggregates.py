@@ -3,8 +3,6 @@ import pandas as pd
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
 
-from tqdm import tqdm
-
 
 def _get_action_aggregates_in_competition(spadl_h5: str, competition_id: int, games: pd.DataFrame, _spadl,
                                          normalize) -> pd.DataFrame:

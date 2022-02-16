@@ -9,6 +9,7 @@ import train_vaep_classifier as tvc
 from tqdm import tqdm
 from data.data_loader import load_and_convert_wyscout_data
 from aggregates import get_action_aggregates_and_store_to_excel
+from setbacks import get_setbacks
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -72,8 +73,18 @@ def get_minutes_before_after(action: pd.Series, player_games: pd.DataFrame, acti
 if __name__ == '__main__':
     # load_and_convert_wyscout_data(True)
     # tvc.train_model(False)
+    # get_action_aggregates_and_store_to_excel()
+    all_competitions = [
+        'Italian first division',
+        'English first division',
+        'Spanish first division',
+        'French first division',
+        'German first division',
+        'European Championship',
+        'World Cup'
+    ]
 
-    get_action_aggregates_and_store_to_excel()
+    get_setbacks(all_competitions, True)
 
     # atomic = True
     # if atomic:
@@ -97,6 +108,7 @@ if __name__ == '__main__':
     #     teams = spadlstore["teams"]
     #     player_games = spadlstore["player_games"]
     #
+    # print(games.head())
     #
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
@@ -109,6 +121,7 @@ if __name__ == '__main__':
     #             .reset_index(drop=True)
     #     )
     #     print(actions.head())
+    #     break
 
     #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
     #     all_actions.append(pd.concat([actions, values], axis=1))
@@ -121,10 +134,6 @@ if __name__ == '__main__':
     #     all_actions = all_actions[["game_id", "action_id", "period_id", "player_id", "time_seconds", "type_name",
     #                                "result_name", "nickname", "team_name_short", "offensive_value", "defensive_value",
     #                                "vaep_value"]]
-    # p = all_actions[all_actions.type_name == "shot_penalty"]
-    # if not atomic:
-    #     p = p[p.result_name == "success"]
-    # p = p[~(p.period_id == 5)]
     #
     # time = []
     # for index, action in list(p.iterrows()):
