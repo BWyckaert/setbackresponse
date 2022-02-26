@@ -75,17 +75,17 @@ if __name__ == '__main__':
     # tvc.train_model(False)
     # get_action_aggregates_and_store_to_excel()
     all_competitions = [
-        'Italian first division',
-        'English first division',
-        'Spanish first division',
-        'French first division',
-        'German first division',
-        'European Championship',
+        # 'Italian first division',
+        # 'English first division',
+        # 'Spanish first division',
+        # 'French first division',
+        # 'German first division',
+        # 'European Championship',
         'World Cup'
     ]
 
     get_setbacks(all_competitions, True)
-
+    #
     # atomic = True
     # if atomic:
     #     _spadl = aspadl
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     #     teams = spadlstore["teams"]
     #     player_games = spadlstore["player_games"]
     #
-    # print(games.head())
+    # # print(games[games.competition_name == "World Cup"])
     #
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
@@ -120,8 +120,12 @@ if __name__ == '__main__':
     #             .sort_values(["game_id", "period_id", "action_id"])
     #             .reset_index(drop=True)
     #     )
-    #     print(actions.head())
+    #     actions = actions[actions.type_name == "freekick"]
+    #     print()
+    #     print(actions)
+    #
     #     break
+
 
     #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
     #     all_actions.append(pd.concat([actions, values], axis=1))
@@ -135,16 +139,6 @@ if __name__ == '__main__':
     #                                "result_name", "nickname", "team_name_short", "offensive_value", "defensive_value",
     #                                "vaep_value"]]
     #
-    # time = []
-    # for index, action in list(p.iterrows()):
-    #     if all_actions.iloc[index + 1].type_name == "goal":
-    #         p.drop(index, inplace=True)
-    #     else:
-    #         time.append(get_time(action.period_id, action.time_seconds))
-    #         # print(all_actions.iloc[index: index+1])
-    #         # print()
-    # print(p)
-    # p["time"] = time
     #
     # all_actions["nb_actions"] = 1
     # d = {}  # Doesnt work when one player misses more than 1 penalty

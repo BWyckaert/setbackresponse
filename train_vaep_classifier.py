@@ -141,7 +141,7 @@ def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, 
         df[predicted_action_ratings.columns].to_hdf(predictions_h5, f"game_{int(k)}")
 
 
-def train_model(atomic=True, learner="xgboost", print_eval=False) -> VAEP:
+def train_model(atomic=True, learner="xgboost", print_eval=False, compute_features_labels=True) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
 
@@ -165,7 +165,9 @@ def train_model(atomic=True, learner="xgboost", print_eval=False) -> VAEP:
     predictions_h5 = os.path.join(datafolder, "predictions.h5")
     games = pd.read_hdf(spadl_h5, "games")
 
-    _compute_features_and_labels(spadl_h5, features_h5, labels_h5, games, vaep)
+    if compute_features_labels:
+        _compute_features_and_labels(spadl_h5, features_h5, labels_h5, games, vaep)
+
     features, labels = _read_features_and_labels(games, features_h5, labels_h5, vaep, _fs)
 
     # Stealing this from socceraction/vaep/base.fit()
