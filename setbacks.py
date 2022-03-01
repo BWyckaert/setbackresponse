@@ -45,7 +45,7 @@ def get_score(game: pd.DataFrame, actions: pd.DataFrame, setback: pd.Series, ato
     if not atomic:
         shotlike = {"shot", "shot_penalty", "shot_freekick"}
         bs_goal_actions = before_setback[
-            (before_setback.type_name.isin(shotlike) & before_setback.result_name == "success") | (
+            (before_setback.type_name.isin(shotlike) & (before_setback.result_name == "success")) | (
                     before_setback.result_name == "owngoal")]
         for action in bs_goal_actions.itertuples():
             if action.result_name == "success":
@@ -197,8 +197,44 @@ def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) 
     return gc_setbacks
 
 
-# def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
-#     freekicks = actions[actions.type_name == "freekick"]
+def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    freekick_like = {"shot_penalty", "freekick", "freekick_crossed", "freekick_short",
+                     "shot_freekick"}  # atomic (freekick) and default (others) (shot_penalty both) combined
+    freekicks = actions[actions.type_name.isin(freekick_like) & (actions.shift(1).type_name == "foul")]
+    if not atomic:
+        freekicks = freekicks[freekicks.start_x > 75]
+    else:
+        freekicks = freekicks[freekicks.x > 75]
+
+    fltg_setbacks = []
+    for index, freekick in freekicks.iterrows():
+        ca = actions[(actions.period_id == freekick.period_id) & (actions.time_seconds >= freekick.time_seconds) & (
+                    actions.time_seconds < (freekick.time_seconds + 10))]  # ca = consecutive actions
+        if not atomic:
+            shotlike = {"shot", "shot_penalty", "shot_freekick"}
+            ca = ca[
+                ((ca.type_name.isin(shotlike)) & (ca.result_name == "success") & (ca.team_id == freekick.team_id)) | (
+                        (ca.result_name == "owngoal") & ~(ca.team_id == freekick.team_id))]
+        else:
+            ca = ca[((ca.type_name == "goal") & (ca.team_id == freekick.team_id)) | (
+                    (ca.type_name == "owngoal") & ~(ca.team_id == freekick.team_id))]
+
+        if (not ca.empty) and (actions.iloc[index - 1].type_name == "foul"):
+            foul = actions.iloc[index - 1]
+            game, home, opponent = get_game_details(foul, games)
+            score = get_score(game, actions[actions.game_id == game.game_id], foul, atomic)
+
+            fltg_setbacks.append(
+                pd.DataFrame(data=np.array(
+                    [[foul.nickname, foul.player_id, foul.birth_date, foul.team_name_short, opponent, foul.game_id,
+                      home,
+                      "foul leading to goal", foul.period_id, foul.time_seconds, score]]
+                ), columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
+                            "home", "setback_type", "period_id", "time_seconds", "score"])
+            )
+
+    fltg_setbacks = pd.concat(fltg_setbacks).reset_index(drop=True)
+    return fltg_setbacks
 
 
 def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
@@ -239,14 +275,15 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
     all_actions = left_to_right(games, all_actions, _spadl)
 
     player_setbacks = []
-    player_setbacks.append(get_missed_penalties(games, all_actions, atomic))
-    player_setbacks.append(get_missed_shots(games, all_actions, atomic))
+    # player_setbacks.append(get_missed_penalties(games, all_actions, atomic))
+    # player_setbacks.append(get_missed_shots(games, all_actions, atomic))
+    player_setbacks.append(foul_leading_to_goal(games, all_actions, atomic))
 
-    team_setbacks = []
-    team_setbacks.append(get_goal_conceded(games, all_actions, atomic))
+    # team_setbacks = []
+    # team_setbacks.append(get_goal_conceded(games, all_actions, atomic))
 
     print()
     print(pd.concat(player_setbacks))
-    print()
-    print()
-    print(pd.concat(team_setbacks))
+    # print()
+    # print()
+    # print(pd.concat(team_setbacks))

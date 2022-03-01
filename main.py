@@ -71,7 +71,7 @@ def get_minutes_before_after(action: pd.Series, player_games: pd.DataFrame, acti
 
 
 if __name__ == '__main__':
-    # load_and_convert_wyscout_data(True)
+    # load_and_convert_wyscout_data(False)
     # tvc.train_model(False)
     # get_action_aggregates_and_store_to_excel()
     all_competitions = [
@@ -84,7 +84,7 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    get_setbacks(all_competitions, True)
+    get_setbacks(all_competitions, False)
     #
     # atomic = True
     # if atomic:
@@ -108,7 +108,8 @@ if __name__ == '__main__':
     #     teams = spadlstore["teams"]
     #     player_games = spadlstore["player_games"]
     #
-    # # print(games[games.competition_name == "World Cup"])
+    #
+    # games = games[games.competition_name == "World Cup"]
     #
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
@@ -120,11 +121,14 @@ if __name__ == '__main__':
     #             .sort_values(["game_id", "period_id", "action_id"])
     #             .reset_index(drop=True)
     #     )
-    #     actions = actions[actions.type_name == "freekick"]
-    #     print()
-    #     print(actions)
+    #     all_actions.append(actions[actions['type_name'].shift(-1) == "freekick"])
+    #     # all_actions.append(actions[actions['type_name'].shift(-1).isin({"freekick_crossed", "freekick_short",
+    #     #              "shot_freekick"})])
+    #     # print()
+    #     # print(actions)
+    #     # print()
     #
-    #     break
+    # print(pd.concat(all_actions).reset_index(drop=True))
 
 
     #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
