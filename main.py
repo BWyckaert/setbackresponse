@@ -84,50 +84,50 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    get_setbacks(all_competitions, False)
+    # get_setbacks(all_competitions, False)
     #
-    # atomic = True
-    # if atomic:
-    #     _spadl = aspadl
-    #     datafolder = "atomic_data"
-    # else:
-    #     _spadl = spadl
-    #     datafolder = "default_data"
-    #
-    # spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    # predictions_h5 = os.path.join(datafolder, "predictions.h5")
-    #
-    # with pd.HDFStore(spadl_h5) as spadlstore:
-    #     games = (
-    #         spadlstore["games"]
-    #             .merge(spadlstore["competitions"], how='left')
-    #             .merge(spadlstore["teams"].add_prefix('home_'), how='left')
-    #             .merge(spadlstore["teams"].add_prefix('away_'), how='left'))
-    #     competitions = spadlstore["competitions"]
-    #     players = spadlstore["players"]
-    #     teams = spadlstore["teams"]
-    #     player_games = spadlstore["player_games"]
-    #
-    #
-    # games = games[games.competition_name == "World Cup"]
-    #
-    # all_actions = []
-    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
-    #     actions = (
-    #         _spadl.add_names(actions)
-    #             .merge(players, how="left")
-    #             .merge(teams, how="left")
-    #             .sort_values(["game_id", "period_id", "action_id"])
-    #             .reset_index(drop=True)
-    #     )
-    #     all_actions.append(actions[actions['type_name'].shift(-1) == "freekick"])
-    #     # all_actions.append(actions[actions['type_name'].shift(-1).isin({"freekick_crossed", "freekick_short",
-    #     #              "shot_freekick"})])
-    #     # print()
-    #     # print(actions)
-    #     # print()
-    #
+    atomic = True
+    if atomic:
+        _spadl = aspadl
+        datafolder = "atomic_data"
+    else:
+        _spadl = spadl
+        datafolder = "default_data"
+
+    spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    predictions_h5 = os.path.join(datafolder, "predictions.h5")
+
+    with pd.HDFStore(spadl_h5) as spadlstore:
+        games = (
+            spadlstore["games"]
+                .merge(spadlstore["competitions"], how='left')
+                .merge(spadlstore["teams"].add_prefix('home_'), how='left')
+                .merge(spadlstore["teams"].add_prefix('away_'), how='left'))
+        competitions = spadlstore["competitions"]
+        players = spadlstore["players"]
+        teams = spadlstore["teams"]
+        player_games = spadlstore["player_games"]
+
+
+    games = games[games.competition_name == "World Cup"]
+
+    all_actions = []
+    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+        actions = pd.read_hdf(spadl_h5, f"actions/game_{2057960}")
+        actions = (
+            _spadl.add_names(actions)
+                .merge(players, how="left")
+                .merge(teams, how="left")
+                .sort_values(["game_id", "period_id", "action_id"])
+                .reset_index(drop=True)
+        )
+        # all_actions.append(actions[~(actions.shift(-1).team_id == actions.team_id)])
+        # all_actions.append(actions[actions.type_name == "dribble"])
+        # print()
+        print(actions)
+        # print()
+        break
+
     # print(pd.concat(all_actions).reset_index(drop=True))
 
 

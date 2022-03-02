@@ -174,8 +174,8 @@ def get_game_details_gc(goal: pd.Series, games: pd.DataFrame, owngoal: bool) -> 
 
 
 def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
-    shotlike = {"shot", "shot_penalty", "shot_freekick"}
     if not atomic:
+        shotlike = {"shot", "shot_penalty", "shot_freekick"}
         goals = actions[((actions.type_name.isin(shotlike)) & (actions.result_name == "success")) | (
                 actions.result_name == "owngoal")]
     else:
@@ -201,6 +201,7 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
     freekick_like = {"shot_penalty", "freekick", "freekick_crossed", "freekick_short",
                      "shot_freekick"}  # atomic (freekick) and default (others) (shot_penalty both) combined
     freekicks = actions[actions.type_name.isin(freekick_like) & (actions.shift(1).type_name == "foul")]
+
     if not atomic:
         freekicks = freekicks[freekicks.start_x > 75]
     else:
@@ -208,18 +209,19 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
 
     fltg_setbacks = []
     for index, freekick in freekicks.iterrows():
-        ca = actions[(actions.period_id == freekick.period_id) & (actions.time_seconds >= freekick.time_seconds) & (
-                    actions.time_seconds < (freekick.time_seconds + 10))]  # ca = consecutive actions
+        fa = actions[(actions.game_id == freekick.game_id) & (actions.period_id == freekick.period_id) & (actions.time_seconds >= freekick.time_seconds) & (
+                actions.time_seconds < (freekick.time_seconds + 10))]  # fa = following actions
+
         if not atomic:
             shotlike = {"shot", "shot_penalty", "shot_freekick"}
-            ca = ca[
-                ((ca.type_name.isin(shotlike)) & (ca.result_name == "success") & (ca.team_id == freekick.team_id)) | (
-                        (ca.result_name == "owngoal") & ~(ca.team_id == freekick.team_id))]
+            fa = fa[
+                ((fa.type_name.isin(shotlike)) & (fa.result_name == "success") & (fa.team_id == freekick.team_id)) | (
+                        (fa.result_name == "owngoal") & ~(fa.team_id == freekick.team_id))]
         else:
-            ca = ca[((ca.type_name == "goal") & (ca.team_id == freekick.team_id)) | (
-                    (ca.type_name == "owngoal") & ~(ca.team_id == freekick.team_id))]
+            fa = fa[((fa.type_name == "goal") & (fa.team_id == freekick.team_id)) | (
+                    (fa.type_name == "owngoal") & ~(fa.team_id == freekick.team_id))]
 
-        if (not ca.empty) and (actions.iloc[index - 1].type_name == "foul"):
+        if (not fa.empty) and (actions.iloc[index - 1].type_name == "foul"):
             foul = actions.iloc[index - 1]
             game, home, opponent = get_game_details(foul, games)
             score = get_score(game, actions[actions.game_id == game.game_id], foul, atomic)
@@ -235,6 +237,47 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
 
     fltg_setbacks = pd.concat(fltg_setbacks).reset_index(drop=True)
     return fltg_setbacks
+
+
+def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    if not atomic:
+        shotlike = {"shot", "shot_penalty", "shot_freekick"}
+        goals = actions[((actions.type_name.isin(shotlike)) & (actions.result_name == "success")) | (
+                actions.result_name == "owngoal")]
+    else:
+        goals = actions[(actions.type_name == "goal") | (actions.type_name == "owngoal")]
+
+    bpltg_setbacks = []
+    for index, goal in goals.iterrows():
+        pa = actions[(actions.game_id == goal.game_id) & (actions.period_id == goal.period_id) & (actions.time_seconds < goal.time_seconds) & (
+                actions.time_seconds > (goal.time_seconds - 15))]  # pa = previous actions
+
+        if not atomic:
+            bad_pass = pa[((pa.type_name == "pass") & (pa.result_name == "fail")) & (
+                    (~(pa.team_id == goal.team_id) & (goal.result_name == "success")) | (
+                    (pa.team_id == goal.team_id) & (goal.result_name == "owngoal")))]
+
+        else:
+            bad_pass = pa[((pa.type_name == "pass") & (pa.shift(-1).type_name == "interception")) & (
+                        (~(pa.team_id == goal.team_id) & (goal.type_name == "goal")) | (
+                        (pa.team_id == goal.team_id) & (goal.type_name == "owngoal")))]
+
+        if not bad_pass.empty:
+            bad_pass = bad_pass.iloc[-1]
+            game, home, opponent = get_game_details(bad_pass, games)
+            score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
+
+            bpltg_setbacks.append(
+                pd.DataFrame(data=np.array(
+                    [[bad_pass.nickname, bad_pass.player_id, bad_pass.birth_date, bad_pass.team_name_short, opponent, bad_pass.game_id,
+                      home,
+                      "bad pass leading to goal", bad_pass.period_id, bad_pass.time_seconds, score]]
+                ), columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
+                            "home", "setback_type", "period_id", "time_seconds", "score"])
+            )
+
+    bpltg_setbacks = pd.concat(bpltg_setbacks).reset_index(drop=True)
+    return bpltg_setbacks
 
 
 def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
@@ -271,14 +314,14 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
             )
             all_actions.append(actions)
 
-    all_actions = pd.concat(all_actions).reset_index()
+    all_actions = pd.concat(all_actions).reset_index(drop=True)
     all_actions = left_to_right(games, all_actions, _spadl)
 
     player_setbacks = []
     # player_setbacks.append(get_missed_penalties(games, all_actions, atomic))
     # player_setbacks.append(get_missed_shots(games, all_actions, atomic))
-    player_setbacks.append(foul_leading_to_goal(games, all_actions, atomic))
-
+    # player_setbacks.append(foul_leading_to_goal(games, all_actions, atomic))
+    player_setbacks.append(bad_pass_leading_to_goal(games, all_actions, atomic))
     # team_setbacks = []
     # team_setbacks.append(get_goal_conceded(games, all_actions, atomic))
 
