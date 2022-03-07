@@ -209,8 +209,9 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
 
     fltg_setbacks = []
     for index, freekick in freekicks.iterrows():
-        fa = actions[(actions.game_id == freekick.game_id) & (actions.period_id == freekick.period_id) & (actions.time_seconds >= freekick.time_seconds) & (
-                actions.time_seconds < (freekick.time_seconds + 10))]  # fa = following actions
+        fa = actions[(actions.game_id == freekick.game_id) & (actions.period_id == freekick.period_id) & (
+                actions.time_seconds >= freekick.time_seconds) & (
+                             actions.time_seconds < (freekick.time_seconds + 10))]  # fa = following actions
 
         if not atomic:
             shotlike = {"shot", "shot_penalty", "shot_freekick"}
@@ -249,27 +250,33 @@ def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
 
     bpltg_setbacks = []
     for index, goal in goals.iterrows():
-        pa = actions[(actions.game_id == goal.game_id) & (actions.period_id == goal.period_id) & (actions.time_seconds < goal.time_seconds) & (
-                actions.time_seconds > (goal.time_seconds - 15))]  # pa = previous actions
+        pa = actions[(actions.game_id == goal.game_id) & (actions.period_id == goal.period_id) & (
+                actions.time_seconds < goal.time_seconds) & (
+                             actions.time_seconds > (goal.time_seconds - 15))]  # pa = previous actions
 
         if not atomic:
             bad_pass = pa[((pa.type_name == "pass") & (pa.result_name == "fail")) & (
                     (~(pa.team_id == goal.team_id) & (goal.result_name == "success")) | (
                     (pa.team_id == goal.team_id) & (goal.result_name == "owngoal")))]
+            bad_pass = bad_pass[bad_pass.start_x < 65]
 
         else:
             bad_pass = pa[((pa.type_name == "pass") & (pa.shift(-1).type_name == "interception")) & (
-                        (~(pa.team_id == goal.team_id) & (goal.type_name == "goal")) | (
-                        (pa.team_id == goal.team_id) & (goal.type_name == "owngoal")))]
+                    (~(pa.team_id == goal.team_id) & (goal.type_name == "goal")) | (
+                    (pa.team_id == goal.team_id) & (goal.type_name == "owngoal")))]
+            bad_pass = bad_pass[bad_pass.x < 65]
 
         if not bad_pass.empty:
             bad_pass = bad_pass.iloc[-1]
+            if pa[(pa.time_seconds > bad_pass.time_seconds) & (pa.team_id == bad_pass.team_id)].empty:
+                continue
             game, home, opponent = get_game_details(bad_pass, games)
             score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
 
             bpltg_setbacks.append(
                 pd.DataFrame(data=np.array(
-                    [[bad_pass.nickname, bad_pass.player_id, bad_pass.birth_date, bad_pass.team_name_short, opponent, bad_pass.game_id,
+                    [[bad_pass.nickname, bad_pass.player_id, bad_pass.birth_date, bad_pass.team_name_short, opponent,
+                      bad_pass.game_id,
                       home,
                       "bad pass leading to goal", bad_pass.period_id, bad_pass.time_seconds, score]]
                 ), columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
@@ -278,6 +285,68 @@ def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
 
     bpltg_setbacks = pd.concat(bpltg_setbacks).reset_index(drop=True)
     return bpltg_setbacks
+
+
+def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    last_bad_pass_in_seq = []
+    grouped_by_game = actions.groupby("game_id")
+    for game_id, game_actions in grouped_by_game:
+        grouped_by_player = game_actions.groupby("player_id")
+        for player_id, player_actions in grouped_by_player:
+            pass_actions = player_actions[
+                (player_actions.type_name == "pass") & (
+                            game_actions.shift(-1).period_id == game_actions.period_id)].reset_index(drop=True)
+            if pass_actions.empty:
+                continue
+            if not atomic:
+                # groups consecutive failed and successful passes
+                grouped_by_success_failure = pass_actions.groupby(
+                    [(pass_actions.result_name != pass_actions.shift(1).result_name).cumsum(), "period_id"])
+            else:
+                # add result_name column to dataframe to mimic not atomic dataframe
+                next_actions = game_actions[
+                    (game_actions.shift(1).type_name == "pass") & (game_actions.shift(1).player_id == player_id) & (
+                            game_actions.shift(1).period_id == game_actions.period_id)].reset_index(drop=True)
+                pass_actions["result_name"] = next_actions.apply(
+                    lambda y: "success" if (y.type_name == "receival") else "fail", axis=1)
+
+                grouped_by_success_failure = pass_actions.groupby(
+                    [(pass_actions.result_name != pass_actions.shift(1).result_name).cumsum(), "period_id"])
+
+            for _, sf in grouped_by_success_failure:
+                sf = sf.reset_index(drop=True)
+                # don't consider successful passes
+                if sf.iloc[0].result_name == "success":
+                    continue
+                # only consider at least 3 bad consecutive passes
+                if sf.shape[0] < 3:
+                    continue
+                # only consider 3 bad passes within 300 seconds of each other
+                while sf.shape[0] >= 3:
+                    if sf.at[2, "time_seconds"] - sf.at[0, "time_seconds"] < 300:
+                        last_bad_pass_in_seq.append(sf.iloc[2].to_frame().T)
+                        # print(sf)
+                        break
+                    else:
+                        sf = sf.iloc[1:].reset_index(drop=True)
+
+    last_bad_pass_in_seq = pd.concat(last_bad_pass_in_seq).reset_index(drop=True)
+
+    bpis_setbacks = []
+    for bad_pass in last_bad_pass_in_seq.itertuples():
+        game, home, opponent = get_game_details(bad_pass, games)
+        score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
+
+        bpis_setbacks.append(
+            pd.DataFrame(data=np.array(
+                [[bad_pass.nickname, bad_pass.player_id, bad_pass.birth_date, bad_pass.team_name_short, opponent,
+                  bad_pass.game_id, home,
+                  "consecutive bad passes", bad_pass.period_id, bad_pass.time_seconds, score]]),
+                columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
+                         "home", "setback_type", "period_id", "time_seconds", "score"]))
+
+    bpis_setbacks = pd.concat(bpis_setbacks).reset_index(drop=True)
+    return bpis_setbacks
 
 
 def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
@@ -321,7 +390,8 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
     # player_setbacks.append(get_missed_penalties(games, all_actions, atomic))
     # player_setbacks.append(get_missed_shots(games, all_actions, atomic))
     # player_setbacks.append(foul_leading_to_goal(games, all_actions, atomic))
-    player_setbacks.append(bad_pass_leading_to_goal(games, all_actions, atomic))
+    # player_setbacks.append(bad_pass_leading_to_goal(games, all_actions, atomic))
+    player_setbacks.append(bad_consecutive_passes(games, all_actions, atomic))
     # team_setbacks = []
     # team_setbacks.append(get_goal_conceded(games, all_actions, atomic))
 

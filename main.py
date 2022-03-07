@@ -71,7 +71,7 @@ def get_minutes_before_after(action: pd.Series, player_games: pd.DataFrame, acti
 
 
 if __name__ == '__main__':
-    # load_and_convert_wyscout_data(False)
+    load_and_convert_wyscout_data(False)
     # tvc.train_model(False)
     # get_action_aggregates_and_store_to_excel()
     all_competitions = [
@@ -85,8 +85,8 @@ if __name__ == '__main__':
     ]
 
     # get_setbacks(all_competitions, False)
-    #
-    atomic = True
+
+    atomic = False
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -98,6 +98,7 @@ if __name__ == '__main__':
     predictions_h5 = os.path.join(datafolder, "predictions.h5")
 
     with pd.HDFStore(spadl_h5) as spadlstore:
+        print(spadlstore["games"].head())
         games = (
             spadlstore["games"]
                 .merge(spadlstore["competitions"], how='left')
@@ -108,25 +109,27 @@ if __name__ == '__main__':
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
+    print(games.head())
 
-    games = games[games.competition_name == "World Cup"]
-
-    all_actions = []
-    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-        actions = pd.read_hdf(spadl_h5, f"actions/game_{2057960}")
-        actions = (
-            _spadl.add_names(actions)
-                .merge(players, how="left")
-                .merge(teams, how="left")
-                .sort_values(["game_id", "period_id", "action_id"])
-                .reset_index(drop=True)
-        )
-        # all_actions.append(actions[~(actions.shift(-1).team_id == actions.team_id)])
-        # all_actions.append(actions[actions.type_name == "dribble"])
-        # print()
-        print(actions)
-        # print()
-        break
+    #
+    # games = games[games.competition_name == "World Cup"]
+    #
+    # all_actions = []
+    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{2057955}")
+    #     actions = (
+    #         _spadl.add_names(actions)
+    #             .merge(players, how="left")
+    #             .merge(teams, how="left")
+    #             .sort_values(["game_id", "period_id", "action_id"])
+    #             .reset_index(drop=True)
+    #     )
+    #     # all_actions.append(actions[~(actions.shift(-1).team_id == actions.team_id)])
+    #     # all_actions.append(actions[actions.type_name == "dribble"])
+    #     # print()
+    #     print(actions)
+    #     # print()
+    #     break
 
     # print(pd.concat(all_actions).reset_index(drop=True))
 
