@@ -18,12 +18,12 @@ def _select_competitions(competitions: pd.DataFrame) -> pd.DataFrame:
     """
     # Uncomment all wanted competitions
     all_competitions = [
-        # 'Italian first division',
-        # 'English first division',
-        # 'Spanish first division',
-        # 'French first division',
-        # 'German first division',
-        # 'European Championship',
+        'Italian first division',
+        'English first division',
+        'Spanish first division',
+        'French first division',
+        'German first division',
+        'European Championship',
         'World Cup'
     ]
     selected_competitions = pd.concat([competitions[competitions.competition_name == competition]
@@ -80,10 +80,28 @@ def _get_games_in_competitions(competitions: pd.DataFrame, pwl: PublicWyscoutLoa
         wyscout_matches.rename(columns={'wyId': 'game_id'}, inplace=True)
         wyscout_matches = wyscout_matches[['game_id', 'label']]
         games_in_competition = pwl.games(competition.competition_id, competition.season_id)
-        games_in_competition = games_in_competition.join(wyscout_matches.set_index('game_id'), on='game_id').reset_index()
+        games_in_competition = games_in_competition.join(wyscout_matches.set_index('game_id'), on='game_id')
         games.append(games_in_competition)
 
     return pd.concat(games).reset_index(drop=True)
+
+
+def _add_position_to_players(players: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds a new column to the players dataframe denoting the players position
+
+    :param players: the players dataframe
+    :return: the given dataframe with an added position column
+    """
+    root = os.path.join(os.getcwd(), 'wyscout_data')
+    with open(os.path.join(root, "players.json"), 'rt', encoding='utf-8') as wm:
+        wyscout_players = pd.DataFrame(json.load(wm))
+    players = players.merge(wyscout_players[["wyId", "role"]], left_on="player_id", right_on="wyId")
+    players["role"] = players.apply(lambda x: x.role["name"], axis=1)
+    players.rename(columns={'role': 'position'}, inplace=True)
+    players = players[["player_id", "player_name", "nickname", "birth_date", "position"]]
+
+    return players
 
 
 def _load_and_convert_data(games: pd.DataFrame, pwl: PublicWyscoutLoader, atomic: bool) -> (pd.DataFrame, pd.DataFrame,
@@ -104,13 +122,14 @@ def _load_and_convert_data(games: pd.DataFrame, pwl: PublicWyscoutLoader, atomic
     for game in tqdm(list(games.itertuples()), desc="Loading and converting game data"):
         teams.append(pwl.teams(game.game_id))
         players.append(pwl.players(game.game_id))
-        # events = pwl.events(game.game_id)
-        # actions[game.game_id] = convert_to_actions(events, game.home_team_id)
-        # if atomic:
-        #     actions[game.game_id] = convert_to_atomic(actions[game.game_id])
+        events = pwl.events(game.game_id)
+        actions[game.game_id] = convert_to_actions(events, game.home_team_id)
+        if atomic:
+            actions[game.game_id] = convert_to_atomic(actions[game.game_id])
 
     teams = pd.concat(teams).drop_duplicates(subset='team_id')
     players = pd.concat(players)
+    players = _add_position_to_players(players)
     return teams, players, actions
 
 
@@ -142,8 +161,8 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
             subset='player_id').reset_index(drop=True)
         spadlstore["player_games"] = players[
             ['player_id', 'game_id', 'team_id', 'is_starter', 'minutes_played']].reset_index(drop=True)
-        # for game_id in actions.keys():
-        #     spadlstore[f"actions/game_{game_id}"] = actions[game_id]
+        for game_id in actions.keys():
+            spadlstore[f"actions/game_{game_id}"] = actions[game_id]
 
 
 def load_and_convert_wyscout_data(atomic=True, download=False):

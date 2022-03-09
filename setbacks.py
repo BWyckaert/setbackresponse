@@ -343,10 +343,56 @@ def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: b
                   bad_pass.game_id, home,
                   "consecutive bad passes", bad_pass.period_id, bad_pass.time_seconds, score]]),
                 columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
-                         "home", "setback_type", "period_id", "time_seconds", "score"]))
+                         "home", "setback_type", "period_id", "time_seconds_last_bad_pass", "score"]))
 
     bpis_setbacks = pd.concat(bpis_setbacks).reset_index(drop=True)
     return bpis_setbacks
+
+
+def lost_game(game: pd.Series, team_id: int) -> bool:
+    home = game.home_team_id == team_id
+    score = game.label.split(", ")[1][0:5]
+    if home:
+        return int(score[0]) < int(score[4])
+    else:
+        return int(score[0]) > int(score[4])
+
+
+def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  #TODO: rewrite using betting odds
+    cl_setbacks = []
+    games_by_home_team = games.groupby('home_team_id')
+    games_by_away_team = games.groupby('away_team_id')
+    for team_id, games in games_by_home_team:
+        last_loss_in_seq = []
+        games = pd.concat([games, games_by_away_team.get_group(team_id)]).sort_values('game_date')
+        games['lost_game'] = games.apply(lambda x: lost_game(x, team_id), axis=1)
+        grouped_by_loss_wins = games.groupby(
+            [(games.lost_game != games.shift(1).lost_game).cumsum()])
+
+        for _, lw in grouped_by_loss_wins:
+            lw = lw.reset_index(drop=True)
+            # don't consider wins
+            if not lw.iloc[0].lost_game:
+                continue
+            # only consider at least 3 consecutive losses
+            if lw.shape[0] < 3:
+                continue
+            last_loss_in_seq.append(lw.iloc[2].to_frame().T)
+
+        if not len(last_loss_in_seq) == 0:
+            last_loss_in_seq = pd.concat(last_loss_in_seq).reset_index(drop=True)
+        else:
+            continue
+
+        for loss in last_loss_in_seq.itertuples():
+            team = loss.home_team_name_short if loss.home_team_id == team_id else loss.away_team_name_short
+            cl_setbacks.append(
+                pd.DataFrame(data=np.array(
+                    [[team, loss.game_date, loss.competition_name, "consecutive losses"]]
+                ), columns=["team", "game_date_last_loss", "competition", "setback_type"]))
+
+    cl_setbacks = pd.concat(cl_setbacks).reset_index(drop=True)
+    return cl_setbacks
 
 
 def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
@@ -386,17 +432,21 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
     all_actions = pd.concat(all_actions).reset_index(drop=True)
     all_actions = left_to_right(games, all_actions, _spadl)
 
-    player_setbacks = []
-    # player_setbacks.append(get_missed_penalties(games, all_actions, atomic))
-    # player_setbacks.append(get_missed_shots(games, all_actions, atomic))
-    # player_setbacks.append(foul_leading_to_goal(games, all_actions, atomic))
-    # player_setbacks.append(bad_pass_leading_to_goal(games, all_actions, atomic))
-    player_setbacks.append(bad_consecutive_passes(games, all_actions, atomic))
-    # team_setbacks = []
-    # team_setbacks.append(get_goal_conceded(games, all_actions, atomic))
+    player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
+                       foul_leading_to_goal(games, all_actions, atomic),
+                       bad_pass_leading_to_goal(games, all_actions, atomic),
+                       bad_consecutive_passes(games, all_actions, atomic)]
+    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
 
-    print()
-    print(pd.concat(player_setbacks))
+    team_setbacks = [get_goal_conceded(games, all_actions, atomic)]
+    team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
+
+    team_setbacks_over_matches = consecutive_losses(games)
+
+
+    # print()
+    # print(pd.concat(player_setbacks))
     # print()
     # print()
     # print(pd.concat(team_setbacks))
+    return player_setbacks, team_setbacks, team_setbacks_over_matches
