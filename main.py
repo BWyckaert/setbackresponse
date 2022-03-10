@@ -88,46 +88,32 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    # get_setbacks(all_competitions, False)
+    get_setbacks(all_competitions, False)
 
-    root = os.path.join(os.getcwd(), 'wyscout_data')
-    with open(os.path.join(root, "players.json"), 'rt', encoding='utf-8') as wm:
-        wyscout_players = pd.DataFrame(json.load(wm))
-    with pd.HDFStore(os.path.join("atomic_data", "spadl.h5")) as spadlstore:
-        players = spadlstore["players"]
-        players = players.merge(wyscout_players[["wyId", "role"]], left_on="player_id", right_on="wyId")
-        players["role"] = players.apply(lambda x: x.role["name"], axis=1)
-        players.rename(columns={'role': 'position'}, inplace=True)
-        players = players[["player_id", "player_name", "nickname", "birth_date", "position"]]
-        spadlstore["players"] = players
-
-
-
-    atomic = True
-    if atomic:
-        _spadl = aspadl
-        datafolder = "atomic_data"
-    else:
-        _spadl = spadl
-        datafolder = "default_data"
-
-    spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    predictions_h5 = os.path.join(datafolder, "predictions.h5")
-
-    with pd.HDFStore(spadl_h5) as spadlstore:
-        games = (
-            spadlstore["games"]
-                .merge(spadlstore["competitions"], how='left')
-                .merge(spadlstore["teams"].add_prefix('home_'), how='left')
-                .merge(spadlstore["teams"].add_prefix('away_'), how='left'))
-        competitions = spadlstore["competitions"]
-        players = spadlstore["players"]
-        teams = spadlstore["teams"]
-        player_games = spadlstore["player_games"]
-
-    print(players.head(50))
-
-
+    # atomic = True
+    # if atomic:
+    #     _spadl = aspadl
+    #     datafolder = "atomic_data"
+    # else:
+    #     _spadl = spadl
+    #     datafolder = "default_data"
+    #
+    # spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    # predictions_h5 = os.path.join(datafolder, "predictions.h5")
+    #
+    # with pd.HDFStore(spadl_h5) as spadlstore:
+    #     games = (
+    #         spadlstore["games"]
+    #             .merge(spadlstore["competitions"], how='left')
+    #             .merge(spadlstore["teams"].add_prefix('home_'), how='left')
+    #             .merge(spadlstore["teams"].add_prefix('away_'), how='left'))
+    #     competitions = spadlstore["competitions"]
+    #     players = spadlstore["players"]
+    #     teams = spadlstore["teams"]
+    #     player_games = spadlstore["player_games"]
+    #
+    #
+    #
     # games = games[games.competition_name == "World Cup"]
     #
     # all_actions = []

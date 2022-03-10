@@ -1,8 +1,10 @@
+import json
 import os
 import pandas as pd
 import numpy as np
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
+import utils
 
 from typing import List
 from tqdm import tqdm
@@ -35,6 +37,7 @@ def get_score(game: pd.DataFrame, actions: pd.DataFrame, setback: pd.Series, ato
     :param atomic: boolean flag indicating whether or not the actions should be atomic
     :return: a string containing the score of the game just before the given setback occurs
     """
+    #
     before_setback = actions[(actions.period_id < setback.period_id) |
                              ((actions.period_id == setback.period_id) &
                               (actions.time_seconds < setback.time_seconds))]
@@ -97,6 +100,15 @@ def get_game_details(setback: pd.Series, games: pd.DataFrame) -> (pd.Series, boo
 
 
 def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    """
+    Finds all missed penalties (not during penalty shootouts) in the given games and returns them in an appropriate
+    dataframe
+
+    :param games: the games for which the missed penalties must be found
+    :param actions: all the actions in the given games
+    :param atomic: boolean flag indicating whether or not the actions are atomic
+    :return: a dataframe of all missed penalties in the given games
+    """
     missed_penalties = actions[(actions.type_name == "shot_penalty") & (~(actions.period_id == 5))]
 
     if not atomic:
@@ -123,24 +135,38 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
 
 
 def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
-    missed_shot = actions[actions.type_name == "shot"]
+    missed_shots = actions[actions.type_name == "shot"]
+    missed_shots = missed_shots.merge(games[["game_id", "competition_id"]], left_on="game_id", right_on="game_id")
+    ms_grouped_by_competition_id = missed_shots.groupby("competition_id")
+
+    root = os.path.join(os.getcwd(), 'wyscout_data')
+
+    missed_shots = []
+    for competition_id, missed_shot in ms_grouped_by_competition_id:
+        with open(os.path.join(root, utils.index.at[competition_id, 'db_events']), 'rt', encoding='utf-8') as we:
+            wyscout_events = pd.DataFrame(json.load(we))
+        missed_shot = missed_shot.merge(wyscout_events[['id', 'tags']], left_on='original_event_id', right_on='id')
+        missed_shot['tags'] = missed_shot.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
+        missed_shots.append(missed_shot[pd.DataFrame(missed_shot.tags.tolist()).isin([201]).any(1).values])
+
+    missed_shots = pd.concat(missed_shots).reset_index(drop=True)
 
     if not atomic:
-        missed_shot = missed_shot[missed_shot.result_name == "fail"]
+        missed_shots = missed_shots[missed_shots.result_name == "fail"]
 
-        missed_kicks = missed_shot[missed_shot.bodypart_name == "foot"]
-        missed_headers = missed_shot[missed_shot.bodypart_name == "head/other"]
+        missed_kicks = missed_shots[missed_shots.bodypart_name == "foot"]
+        missed_headers = missed_shots[missed_shots.bodypart_name == "head/other"]
         missed_kicks = missed_kicks[pow(105 - missed_kicks.start_x, 2) + pow(34 - missed_kicks.start_y, 2) <= 121]
         missed_headers = missed_headers[
             pow(105 - missed_headers.start_x, 2) + pow(34 - missed_headers.start_y, 2) <= 25]
         missed_shots = pd.concat([missed_kicks, missed_headers])
     else:
-        for index, action in missed_shot.iterrows():
+        for index, action in missed_shots.iterrows():
             if actions.iloc[index + 1].type_name == "goal":
-                missed_shot.drop(index, inplace=True)
+                missed_shots.drop(index, inplace=True)
 
-        missed_kicks = missed_shot[missed_shot.bodypart_name == "foot"]
-        missed_headers = missed_shot[missed_shot.bodypart_name == "head/other"]
+        missed_kicks = missed_shots[missed_shots.bodypart_name == "foot"]
+        missed_headers = missed_shots[missed_shots.bodypart_name == "head/other"]
         missed_kicks = missed_kicks[pow(105 - missed_kicks.x, 2) + pow(34 - missed_kicks.y, 2) <= 121]
         missed_headers = missed_headers[pow(105 - missed_headers.x, 2) + pow(34 - missed_headers.y, 2) <= 25]
         missed_shots = pd.concat([missed_kicks, missed_headers])
@@ -432,21 +458,21 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
     all_actions = pd.concat(all_actions).reset_index(drop=True)
     all_actions = left_to_right(games, all_actions, _spadl)
 
-    player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
-                       foul_leading_to_goal(games, all_actions, atomic),
-                       bad_pass_leading_to_goal(games, all_actions, atomic),
-                       bad_consecutive_passes(games, all_actions, atomic)]
-    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
-
-    team_setbacks = [get_goal_conceded(games, all_actions, atomic)]
-    team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
-
-    team_setbacks_over_matches = consecutive_losses(games)
-
+    # player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
+    #                    foul_leading_to_goal(games, all_actions, atomic),
+    #                    bad_pass_leading_to_goal(games, all_actions, atomic),
+    #                    bad_consecutive_passes(games, all_actions, atomic)]
+    # player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
+    #
+    # team_setbacks = [get_goal_conceded(games, all_actions, atomic)]
+    # team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
+    #
+    # team_setbacks_over_matches = consecutive_losses(games)
+    print(get_missed_shots(games, all_actions, atomic))
 
     # print()
     # print(pd.concat(player_setbacks))
     # print()
     # print()
     # print(pd.concat(team_setbacks))
-    return player_setbacks, team_setbacks, team_setbacks_over_matches
+    # return player_setbacks, team_setbacks, team_setbacks_over_matches

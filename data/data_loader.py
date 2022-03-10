@@ -1,6 +1,7 @@
 import json
 import os
 import pandas as pd
+import utils
 
 from socceraction.data.wyscout import PublicWyscoutLoader
 from socceraction.spadl.wyscout import convert_to_actions
@@ -39,43 +40,11 @@ def _get_games_in_competitions(competitions: pd.DataFrame, pwl: PublicWyscoutLoa
     :param competitions: a dataframe of the competitions for which the games must be returned
     :return: a dataframe containing all games in the given competitions
     """
-    index = pd.DataFrame(
-            [
-                {
-                    'competition_id': 524,
-                    'db_matches': 'matches_Italy.json',
-                },
-                {
-                    'competition_id': 364,
-                    'db_matches': 'matches_England.json',
-                },
-                {
-                    'competition_id': 795,
-                    'db_matches': 'matches_Spain.json',
-                },
-                {
-                    'competition_id': 412,
-                    'db_matches': 'matches_France.json',
-                },
-                {
-                    'competition_id': 426,
-                    'db_matches': 'matches_Germany.json',
-                },
-                {
-                    'competition_id': 102,
-                    'db_matches': 'matches_European_Championship.json',
-                },
-                {
-                    'competition_id': 28,
-                    'db_matches': 'matches_World_Cup.json',
-                },
-            ]
-        ).set_index(['competition_id'])
 
     games = []
     root = os.path.join(os.getcwd(), 'wyscout_data')
     for competition in competitions.itertuples():
-        with open(os.path.join(root, index.at[competition.competition_id, 'db_matches']), 'rt', encoding='utf-8') as wm:
+        with open(os.path.join(root, utils.index.at[competition.competition_id, 'db_matches']), 'rt', encoding='utf-8') as wm:
             wyscout_matches = pd.DataFrame(json.load(wm))
         wyscout_matches.rename(columns={'wyId': 'game_id'}, inplace=True)
         wyscout_matches = wyscout_matches[['game_id', 'label']]
