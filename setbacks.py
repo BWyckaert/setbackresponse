@@ -37,7 +37,7 @@ def get_score(game: pd.DataFrame, actions: pd.DataFrame, setback: pd.Series, ato
     :param atomic: boolean flag indicating whether or not the actions should be atomic
     :return: a string containing the score of the game just before the given setback occurs
     """
-    #
+    # Select all actions in the game that occur before the given setback
     before_setback = actions[(actions.period_id < setback.period_id) |
                              ((actions.period_id == setback.period_id) &
                               (actions.time_seconds < setback.time_seconds))]
@@ -47,9 +47,12 @@ def get_score(game: pd.DataFrame, actions: pd.DataFrame, setback: pd.Series, ato
 
     if not atomic:
         shotlike = {"shot", "shot_penalty", "shot_freekick"}
+        # Select all actions in before_setback that result in a goal
         bs_goal_actions = before_setback[
             (before_setback.type_name.isin(shotlike) & (before_setback.result_name == "success")) | (
                     before_setback.result_name == "owngoal")]
+        # Iterate over all goal actions and increment homescore and awayscore based on which team scores and whether it
+        # is a normal goal or an owngoal
         for action in bs_goal_actions.itertuples():
             if action.result_name == "success":
                 if action.team_id == game.home_team_id:
@@ -63,7 +66,10 @@ def get_score(game: pd.DataFrame, actions: pd.DataFrame, setback: pd.Series, ato
                     awayscore += 1
     else:
         goal_like = {"goal", "owngoal"}
+        # Select all actions in before_setback that result in a goal
         bs_goal_actions = before_setback[before_setback.type_name.isin(goal_like)]
+        # Iterate over all goal actions and increment homescore and awayscore based on which team scores and whether it
+        #         # is a normal goal or an owngoal
         for action in bs_goal_actions.itertuples():
             if action.type_name == "goal":
                 if action.team_id == game.home_team_id:
@@ -89,7 +95,9 @@ def get_game_details(setback: pd.Series, games: pd.DataFrame) -> (pd.Series, boo
     :return: a series containing the game in which the setback occurs, a boolean home indicating whether the player who
     suffers the setback plays at home and a string representing the opponent
     """
+    # Select the game in which the setback occurs
     game = games[games.game_id == setback.game_id].iloc[0]
+    # Retrieve the opponent of the player who suffers the setback and whether or not he plays at home or away
     if setback.team_id == game.home_team_id:
         home = True
         opponent = game.away_team_name_short
@@ -99,7 +107,8 @@ def get_game_details(setback: pd.Series, games: pd.DataFrame) -> (pd.Series, boo
     return game, home, opponent
 
 
-def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame,
+                         atomic: bool) -> pd.DataFrame:  # TODO: perhaps also remove penalties where rebound is scores
     """
     Finds all missed penalties (not during penalty shootouts) in the given games and returns them in an appropriate
     dataframe
@@ -109,8 +118,10 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
     :param atomic: boolean flag indicating whether or not the actions are atomic
     :return: a dataframe of all missed penalties in the given games
     """
+    # Select all penalties that do not occur during penalty shootouts
     missed_penalties = actions[(actions.type_name == "shot_penalty") & (~(actions.period_id == 5))]
 
+    # Remove penalties which result in a goal
     if not atomic:
         missed_penalties = missed_penalties[missed_penalties.result_name == "fail"]
     else:
@@ -118,6 +129,7 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
             if actions.iloc[index + 1].type_name == "goal":
                 missed_penalties.drop(index, inplace=True)
 
+    # Construct a dataframe with all missed penalties
     mp_setbacks = []
     for mp in missed_penalties.itertuples():
         game, home, opponent = get_game_details(mp, games)
@@ -135,24 +147,41 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
 
 
 def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
-    missed_shots = actions[actions.type_name == "shot"]
-    missed_shots = missed_shots.merge(games[["game_id", "competition_id"]], left_on="game_id", right_on="game_id")
-    ms_grouped_by_competition_id = missed_shots.groupby("competition_id")
+    """
+    Finds all shots that did not result in a goal that are tagged by Wyscout as an opportunity and that occur within
+    a certain distance from goal (11m for shots, 5m for headers)
+
+    :param games: the games for which the missed shots must be found
+    :param actions: all the actions in the given games
+    :param atomic: boolean flag indicating whether or not the actions are atomic
+    :return: a dataframe of all the missed shots in the given games
+    """
+    # Select all shots in the given games
+    shots = actions[actions.type_name == "shot"]
+    shots = shots.merge(games[["game_id", "competition_id"]], left_on="game_id", right_on="game_id")
+    # Group shots by their competition_id, as Wyscout stores events of one competition in one json file
+    shots_grouped_by_competition_id = shots.groupby("competition_id")
 
     root = os.path.join(os.getcwd(), 'wyscout_data')
 
-    missed_shots = []
-    for competition_id, missed_shot in ms_grouped_by_competition_id:
+    shots = []
+    # Select all shots that are tagged as an opportunity (id: 201) by Wyscout annotators
+    for competition_id, ms_by_competition in shots_grouped_by_competition_id:
+        # Open Wyscout events of the competition represented by competition_id
         with open(os.path.join(root, utils.index.at[competition_id, 'db_events']), 'rt', encoding='utf-8') as we:
-            wyscout_events = pd.DataFrame(json.load(we))
-        missed_shot = missed_shot.merge(wyscout_events[['id', 'tags']], left_on='original_event_id', right_on='id')
-        missed_shot['tags'] = missed_shot.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
-        missed_shots.append(missed_shot[pd.DataFrame(missed_shot.tags.tolist()).isin([201]).any(1).values])
+            events = pd.DataFrame(json.load(we))
+        ms_by_competition = ms_by_competition.merge(events[['id', 'tags']], left_on='original_event_id', right_on='id')
+        # Reformat tags from list of dicts to list
+        ms_by_competition['tags'] = ms_by_competition.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
+        # Select all shots that are tagged as an opportunity
+        shots.append(ms_by_competition[pd.DataFrame(ms_by_competition.tags.tolist()).isin([201]).any(1).values])
 
-    missed_shots = pd.concat(missed_shots).reset_index(drop=True)
+    shots = pd.concat(shots).reset_index(drop=True)
 
+    # Select shots that do not result in a goal where the distance to goal is smaller than 11m for shots and 5m for
+    # headers
     if not atomic:
-        missed_shots = missed_shots[missed_shots.result_name == "fail"]
+        missed_shots = shots[shots.result_name == "fail"]
 
         missed_kicks = missed_shots[missed_shots.bodypart_name == "foot"]
         missed_headers = missed_shots[missed_shots.bodypart_name == "head/other"]
@@ -161,9 +190,11 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
             pow(105 - missed_headers.start_x, 2) + pow(34 - missed_headers.start_y, 2) <= 25]
         missed_shots = pd.concat([missed_kicks, missed_headers])
     else:
-        for index, action in missed_shots.iterrows():
+        for index, action in shots.iterrows():
             if actions.iloc[index + 1].type_name == "goal":
-                missed_shots.drop(index, inplace=True)
+                shots.drop(index, inplace=True)
+
+        missed_shots = shots
 
         missed_kicks = missed_shots[missed_shots.bodypart_name == "foot"]
         missed_headers = missed_shots[missed_shots.bodypart_name == "head/other"]
@@ -171,6 +202,7 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
         missed_headers = missed_headers[pow(105 - missed_headers.x, 2) + pow(34 - missed_headers.y, 2) <= 25]
         missed_shots = pd.concat([missed_kicks, missed_headers])
 
+    # Construct a dataframe with all missed shots
     ms_setbacks = []
     for ms in missed_shots.itertuples():
         game, home, opponent = get_game_details(ms, games)
@@ -321,7 +353,7 @@ def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: b
         for player_id, player_actions in grouped_by_player:
             pass_actions = player_actions[
                 (player_actions.type_name == "pass") & (
-                            game_actions.shift(-1).period_id == game_actions.period_id)].reset_index(drop=True)
+                        game_actions.shift(-1).period_id == game_actions.period_id)].reset_index(drop=True)
             if pass_actions.empty:
                 continue
             if not atomic:
@@ -384,7 +416,7 @@ def lost_game(game: pd.Series, team_id: int) -> bool:
         return int(score[0]) > int(score[4])
 
 
-def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  #TODO: rewrite using betting odds
+def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite using betting odds
     cl_setbacks = []
     games_by_home_team = games.groupby('home_team_id')
     games_by_away_team = games.groupby('away_team_id')
