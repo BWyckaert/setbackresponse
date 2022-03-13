@@ -1,6 +1,8 @@
 import json
 import os
 import warnings
+from io import BytesIO
+
 import pandas as pd
 import socceraction
 import socceraction.atomic.spadl as aspadl
@@ -8,6 +10,8 @@ import socceraction.spadl as spadl
 import train_vaep_classifier as tvc
 
 from tqdm import tqdm
+
+import utils
 from data.data_loader import load_and_convert_wyscout_data
 from aggregates import get_competition_aggregates_and_store_to_excel
 from aggregates import competition_games_players
@@ -78,6 +82,9 @@ if __name__ == '__main__':
     # get_competition_aggregates_and_store_to_excel()
     # competition_games_players()
 
+    # test = pd.read_csv("betting_data/odds_World_cup.csv")
+    # print(test)
+
     all_competitions = [
         # 'Italian first division',
         # 'English first division',
@@ -88,34 +95,44 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    get_setbacks(all_competitions, False)
+    # get_setbacks(all_competitions, False)
+    # root = os.path.join(os.getcwd(), 'wyscout_data')
+    # with open(os.path.join(root, "matches_Germany.json"), 'rt',
+    #           encoding='unicode_escape') as wm:
+    #     wyscout_matches = pd.DataFrame(json.load(wm))['label']
+    # print(wyscout_matches)
 
-    # atomic = True
-    # if atomic:
-    #     _spadl = aspadl
-    #     datafolder = "atomic_data"
-    # else:
-    #     _spadl = spadl
-    #     datafolder = "default_data"
-    #
-    # spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    # predictions_h5 = os.path.join(datafolder, "predictions.h5")
-    #
-    # with pd.HDFStore(spadl_h5) as spadlstore:
-    #     games = (
-    #         spadlstore["games"]
-    #             .merge(spadlstore["competitions"], how='left')
-    #             .merge(spadlstore["teams"].add_prefix('home_'), how='left')
-    #             .merge(spadlstore["teams"].add_prefix('away_'), how='left'))
-    #     competitions = spadlstore["competitions"]
-    #     players = spadlstore["players"]
-    #     teams = spadlstore["teams"]
-    #     player_games = spadlstore["player_games"]
-    #
-    #
-    #
-    # games = games[games.competition_name == "World Cup"]
-    #
+
+    atomic = True
+    if atomic:
+        _spadl = aspadl
+        datafolder = "atomic_data"
+    else:
+        _spadl = spadl
+        datafolder = "default_data"
+
+    spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    predictions_h5 = os.path.join(datafolder, "predictions.h5")
+
+    with pd.HDFStore(spadl_h5) as spadlstore:
+        games = (
+            spadlstore["games"]
+                .merge(spadlstore["competitions"], how='left')
+                .merge(spadlstore["teams"].add_prefix('home_'), how='left')
+                .merge(spadlstore["teams"].add_prefix('away_'), how='left')
+            )
+        competitions = spadlstore["competitions"]
+        players = spadlstore["players"]
+        teams = spadlstore["teams"]
+        player_games = spadlstore["player_games"]
+
+
+    # for c in ['team_name_short', 'team_name']:
+    #     teams[c] = teams[c].apply(
+    #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
+    #     )
+    # print(teams)
+
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
     #     actions = pd.read_hdf(spadl_h5, f"actions/game_{2057955}")
@@ -193,12 +210,14 @@ if __name__ == '__main__':
 
 
     # with pd.HDFStore(os.path.join("atomic_data", "spadl.h5")) as atomicstore:
-    #     with pd.HDFStore(spadl_h5) as spadlstore:
-    #         atomicstore["games"] = spadlstore["games"]
-    #         atomicstore["competitions"] = spadlstore["competitions"]
-    #         atomicstore["players"] = spadlstore["players"]
-    #         atomicstore["player_games"] = spadlstore["player_games"]
-    #         atomicstore["teams"] = spadlstore["teams"]
-    #         for game in tqdm(spadlstore["games"].itertuples(), desc="Converting to atomic SPADL: "):
-    #             actions = spadlstore[f"actions/game_{game.game_id}"]
-    #             atomicstore[f"actions/game_{game.game_id}"] = aspadl.convert_to_atomic(actions)
+    #     with pd.HDFStore(os.path.join("default_data", "spadl.h5")) as spadlstore:
+    #         atomicstore["games"] = games[['game_id', 'competition_id', 'season_id', 'game_date', 'game_day', 'home_team_id', 'away_team_id', 'label']]
+    #         spadlstore["games"] = games[['game_id', 'competition_id', 'season_id', 'game_date', 'game_day', 'home_team_id', 'away_team_id', 'label']]
+            # atomicstore["games"] = spadlstore["games"]
+            # atomicstore["competitions"] = spadlstore["competitions"]
+            # atomicstore["players"] = spadlstore["players"]
+            # atomicstore["player_games"] = spadlstore["player_games"]
+            # atomicstore["teams"] = spadlstore["teams"]
+            # for game in tqdm(spadlstore["games"].itertuples(), desc="Converting to atomic SPADL: "):
+            #     actions = spadlstore[f"actions/game_{game.game_id}"]
+            #     atomicstore[f"actions/game_{game.game_id}"] = aspadl.convert_to_atomic(actions)

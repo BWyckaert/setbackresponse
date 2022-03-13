@@ -44,7 +44,8 @@ def _get_games_in_competitions(competitions: pd.DataFrame, pwl: PublicWyscoutLoa
     games = []
     root = os.path.join(os.getcwd(), 'wyscout_data')
     for competition in competitions.itertuples():
-        with open(os.path.join(root, utils.index.at[competition.competition_id, 'db_matches']), 'rt', encoding='utf-8') as wm:
+        with open(os.path.join(root, utils.index.at[competition.competition_id, 'db_matches']), 'rt',
+                  encoding='utf-8') as wm:
             wyscout_matches = pd.DataFrame(json.load(wm))
         wyscout_matches.rename(columns={'wyId': 'game_id'}, inplace=True)
         wyscout_matches = wyscout_matches[['game_id', 'label']]

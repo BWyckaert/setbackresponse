@@ -108,7 +108,7 @@ def get_game_details(setback: pd.Series, games: pd.DataFrame) -> (pd.Series, boo
 
 
 def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame,
-                         atomic: bool) -> pd.DataFrame:  # TODO: perhaps also remove penalties where rebound is scores
+                         atomic: bool) -> pd.DataFrame:  # TODO: perhaps also remove penalties where rebound is scored
     """
     Finds all missed penalties (not during penalty shootouts) in the given games and returns them in an appropriate
     dataframe
@@ -414,6 +414,9 @@ def lost_game(game: pd.Series, team_id: int) -> bool:
         return int(score[0]) < int(score[4])
     else:
         return int(score[0]) > int(score[4])
+
+
+# def add_odds_to_games(games: pd.DataFrame):
 
 
 def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite using betting odds

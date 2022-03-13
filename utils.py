@@ -53,3 +53,13 @@ index = pd.DataFrame(
         },
     ]
 ).set_index('competition_id')
+
+competition_to_odds = {
+    'Italian first division': 'Italy',
+    'English first division': 'England',
+    'Spanish first division': 'Spain',
+    'French first division': 'France',
+    'German first division': 'Germany',
+    'European Championship': 'European_Championship',
+    'World Cup': 'World_cup'
+}
