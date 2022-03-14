@@ -165,7 +165,7 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
     root = os.path.join(os.getcwd(), 'wyscout_data')
 
     shots = []
-    # Select all shots that are tagged as an opportunity (id: 201) by Wyscout annotators
+    # Select all shots that are tagged as an opportunity (id: 201) and inaccurate (id: 1802) by Wyscout annotators
     for competition_id, ms_by_competition in shots_grouped_by_competition_id:
         # Open Wyscout events of the competition represented by competition_id
         with open(os.path.join(root, utils.index.at[competition_id, 'db_events']), 'rt', encoding='utf-8') as we:
@@ -174,7 +174,10 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
         # Reformat tags from list of dicts to list
         ms_by_competition['tags'] = ms_by_competition.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
         # Select all shots that are tagged as an opportunity
-        shots.append(ms_by_competition[pd.DataFrame(ms_by_competition.tags.tolist()).isin([201]).any(1).values])
+        opportunity = ms_by_competition[pd.DataFrame(ms_by_competition.tags.tolist()).isin([201]).any(axis=1).values]
+        # Select all opportunities that are tagged as inaccurate
+        inaccurate = opportunity[pd.DataFrame(opportunity.tags.tolist()).isin([1802]).any(axis=1).values]
+        shots.append(inaccurate)
 
     shots = pd.concat(shots).reset_index(drop=True)
 

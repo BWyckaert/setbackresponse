@@ -95,36 +95,39 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    # get_setbacks(all_competitions, False)
+    get_setbacks(all_competitions, False)
+
     # root = os.path.join(os.getcwd(), 'wyscout_data')
     # with open(os.path.join(root, "matches_Germany.json"), 'rt',
     #           encoding='unicode_escape') as wm:
     #     wyscout_matches = pd.DataFrame(json.load(wm))['label']
     # print(wyscout_matches)
 
-
-    atomic = True
-    if atomic:
-        _spadl = aspadl
-        datafolder = "atomic_data"
-    else:
-        _spadl = spadl
-        datafolder = "default_data"
-
-    spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    predictions_h5 = os.path.join(datafolder, "predictions.h5")
-
-    with pd.HDFStore(spadl_h5) as spadlstore:
-        games = (
-            spadlstore["games"]
-                .merge(spadlstore["competitions"], how='left')
-                .merge(spadlstore["teams"].add_prefix('home_'), how='left')
-                .merge(spadlstore["teams"].add_prefix('away_'), how='left')
-            )
-        competitions = spadlstore["competitions"]
-        players = spadlstore["players"]
-        teams = spadlstore["teams"]
-        player_games = spadlstore["player_games"]
+    #
+    # atomic = True
+    # if atomic:
+    #     _spadl = aspadl
+    #     datafolder = "atomic_data"
+    # else:
+    #     _spadl = spadl
+    #     datafolder = "default_data"
+    #
+    # spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    # predictions_h5 = os.path.join(datafolder, "predictions.h5")
+    #
+    # with pd.HDFStore(spadl_h5) as spadlstore:
+    #     games = (
+    #         spadlstore["games"]
+    #             .merge(spadlstore["competitions"], how='left')
+    #             .merge(spadlstore["teams"].add_prefix('home_'), how='left')
+    #             .merge(spadlstore["teams"].add_prefix('away_'), how='left')
+    #         )
+    #     competitions = spadlstore["competitions"]
+    #     players = spadlstore["players"]
+    #     teams = spadlstore["teams"]
+    #     player_games = spadlstore["player_games"]
+    #
+    # print(games[games.game_id == 2058007])
 
 
     # for c in ['team_name_short', 'team_name']:
