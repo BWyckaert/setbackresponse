@@ -5,6 +5,8 @@ import socceraction.spadl as spadl
 import setbacks as sb
 import numpy as np
 
+from tqdm import tqdm
+
 
 def _get_action_aggregates_in_competition(spadl_h5: str, competition_id: int, games: pd.DataFrame, _spadl,
                                           normalize) -> pd.DataFrame:
@@ -89,6 +91,27 @@ def competition_games_players():
         competitions[["competition_id", "competition_name"]], left_index=True, right_on="competition_name").set_index(
         ["competition_id", "competition_name"])
     return aggregates
+
+
+def get_player_aggregates():
+    _spadl = spadl
+    datafolder = "default_data"
+
+    spadl_h5 = os.path.join(datafolder, "spadl.h5")
+
+    with pd.HDFStore(spadl_h5) as spadlstore:
+        competitions = spadlstore["competitions"]
+        players = spadlstore["players"]
+        player_games = spadlstore["player_games"]
+
+    for competition in competitions.itertuples():
+        player_setbacks, team_setbacks, team_setbacks_over_matches = sb.get_setbacks([competition.competition_name],
+                                                                                     atomic=False)
+
+    # for player in tqdm(list(players.itertuples()), desc="Collecting aggregates for players: "):
+
+
+
 
 
 def get_competition_aggregates_and_store_to_excel():

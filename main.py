@@ -86,12 +86,12 @@ if __name__ == '__main__':
     # print(test)
 
     all_competitions = [
-        # 'Italian first division',
-        # 'English first division',
-        # 'Spanish first division',
-        # 'French first division',
-        # 'German first division',
-        # 'European Championship',
+        'Italian first division',
+        'English first division',
+        'Spanish first division',
+        'French first division',
+        'German first division',
+        'European Championship',
         'World Cup'
     ]
 
@@ -126,8 +126,7 @@ if __name__ == '__main__':
     #     players = spadlstore["players"]
     #     teams = spadlstore["teams"]
     #     player_games = spadlstore["player_games"]
-    #
-    # print(games[games.game_id == 2058007])
+
 
 
     # for c in ['team_name_short', 'team_name']:

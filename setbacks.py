@@ -122,11 +122,22 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame,
     missed_penalties = actions[(actions.type_name == "shot_penalty") & (~(actions.period_id == 5))]
 
     # Remove penalties which result in a goal
-    if not atomic:
-        missed_penalties = missed_penalties[missed_penalties.result_name == "fail"]
-    else:
-        for index, action in missed_penalties.iterrows():
-            if actions.iloc[index + 1].type_name == "goal":
+    for index, mp in missed_penalties.iterrows():
+        fa = actions[(actions.game_id == mp.game_id) & (actions.period_id == mp.period_id) & (
+                    actions.time_seconds >= mp.time_seconds) & (
+                                 actions.time_seconds < (mp.time_seconds + 5))]  # fa = following actions
+        if not atomic:
+            shotlike = {"shot", "shot_penalty", "shot_freekick"}
+            fa = fa[
+                ((fa.type_name.isin(shotlike)) & (fa.result_name == "success") & (fa.team_id == mp.team_id)) | (
+                        (fa.result_name == "owngoal") & ~(fa.team_id == mp.team_id))]
+            if not fa.empty:
+                missed_penalties.drop(index, inplace=True)
+
+        else:
+            fa = fa[((fa.type_name == "goal") & (fa.team_id == mp.team_id)) | (
+                    (fa.type_name == "owngoal") & ~(fa.team_id == mp.team_id))]
+            if not fa.empty:
                 missed_penalties.drop(index, inplace=True)
 
     # Construct a dataframe with all missed penalties
@@ -506,7 +517,6 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
     # team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
     #
     # team_setbacks_over_matches = consecutive_losses(games)
-    print(get_missed_shots(games, all_actions, atomic))
 
     # print()
     # print(pd.concat(player_setbacks))
