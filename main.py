@@ -16,6 +16,7 @@ from data.data_loader import load_and_convert_wyscout_data
 from aggregates import get_competition_aggregates_and_store_to_excel
 from aggregates import competition_games_players
 from setbacks import get_setbacks
+from aggregates import convert_team_to_player_setback
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -82,9 +83,6 @@ if __name__ == '__main__':
     # get_competition_aggregates_and_store_to_excel()
     # competition_games_players()
 
-    # test = pd.read_csv("betting_data/odds_World_cup.csv")
-    # print(test)
-
     all_competitions = [
         'Italian first division',
         'English first division',
@@ -95,7 +93,7 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    get_setbacks(all_competitions, False)
+    # get_setbacks(all_competitions, False)
 
     # root = os.path.join(os.getcwd(), 'wyscout_data')
     # with open(os.path.join(root, "matches_Germany.json"), 'rt',
@@ -103,41 +101,53 @@ if __name__ == '__main__':
     #     wyscout_matches = pd.DataFrame(json.load(wm))['label']
     # print(wyscout_matches)
 
-    #
-    # atomic = True
-    # if atomic:
-    #     _spadl = aspadl
-    #     datafolder = "atomic_data"
-    # else:
-    #     _spadl = spadl
-    #     datafolder = "default_data"
-    #
-    # spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    # predictions_h5 = os.path.join(datafolder, "predictions.h5")
-    #
-    # with pd.HDFStore(spadl_h5) as spadlstore:
-    #     games = (
-    #         spadlstore["games"]
-    #             .merge(spadlstore["competitions"], how='left')
-    #             .merge(spadlstore["teams"].add_prefix('home_'), how='left')
-    #             .merge(spadlstore["teams"].add_prefix('away_'), how='left')
-    #         )
-    #     competitions = spadlstore["competitions"]
-    #     players = spadlstore["players"]
-    #     teams = spadlstore["teams"]
-    #     player_games = spadlstore["player_games"]
+
+    atomic = False
+    if atomic:
+        _spadl = aspadl
+        datafolder = "atomic_data"
+    else:
+        _spadl = spadl
+        datafolder = "default_data"
+
+    spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    predictions_h5 = os.path.join(datafolder, "predictions.h5")
+
+    with pd.HDFStore(spadl_h5) as spadlstore:
+        games = (
+            spadlstore["games"]
+                .merge(spadlstore["competitions"], how='left')
+                .merge(spadlstore["teams"].add_prefix('home_'), how='left')
+                .merge(spadlstore["teams"].add_prefix('away_'), how='left')
+            )
+        competitions = spadlstore["competitions"]
+        players = spadlstore["players"]
+        teams = spadlstore["teams"]
+        player_games = spadlstore["player_games"]
+
+    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
+    with pd.HDFStore(setbacks_h5) as setbackstore:
+        player_setbacks = setbackstore["player_setbacks"]
+        team_setbacks = setbackstore["teams_setbacks"]
+        team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
+
+    print(player_games.head(22))
 
 
+    # print(team_setbacks.head())
+    # print(team_setbacks_over_matches.head())
+    # print(player_setbacks.head())
 
     # for c in ['team_name_short', 'team_name']:
     #     teams[c] = teams[c].apply(
     #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
     #     )
     # print(teams)
-
+    # games = games[games.competition_name == "Italian first division"]
+    # #
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{2057955}")
+    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
     #     actions = (
     #         _spadl.add_names(actions)
     #             .merge(players, how="left")
@@ -145,16 +155,10 @@ if __name__ == '__main__':
     #             .sort_values(["game_id", "period_id", "action_id"])
     #             .reset_index(drop=True)
     #     )
-    #     # all_actions.append(actions[~(actions.shift(-1).team_id == actions.team_id)])
-    #     # all_actions.append(actions[actions.type_name == "dribble"])
-    #     # print()
-    #     # print(actions[(actions.type_name == 'pass') & ~(actions.shift(-1).team_id == actions.team_id) & (actions.result_name == 'success')])
-    #     # print()
-    #     print(actions)
-    #     break
-
-    # print(pd.concat(all_actions).reset_index(drop=True))
-
+    #     all_actions.append(actions)
+    #
+    # all_actions = pd.concat(all_actions).reset_index(drop=True)
+    # print(convert_team_to_player_setback(team_setbacks.iloc[0:10], player_games, all_actions, players, teams))
 
     #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
     #     all_actions.append(pd.concat([actions, values], axis=1))

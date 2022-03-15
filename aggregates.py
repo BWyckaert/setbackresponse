@@ -78,13 +78,13 @@ def competition_games_players():
         nb_consecutive_losses = team_setbacks_over_matches[
             team_setbacks_over_matches.setback_type == "consecutive losses"].shape[0]
 
-        aggregates.append(pd.DataFrame(data=np.array(
-            [[competition.competition_name, nb_games, nb_players, nb_missed_penalties,
-              nb_missed_shots, nb_foul_leading_to_goal, nb_bad_pass_leading_to_goal, nb_bad_consecutive_passes,
-              nb_goals_conceded, nb_consecutive_losses]]),
-            columns=["competition_name", "games", "players", "missed penalties", "missed shots",
-                     "foul leading to goal", "bad pass leading to goal",
-                     "bad consecutive passes", "goals conceded", "consecutive losses"]).set_index(
+        aggregates.append(pd.DataFrame(
+            data={"competition_name": [competition.competition_name], "games": [nb_games], "players": [nb_players],
+                  "missed penalties": [nb_missed_penalties], "missed shots": [nb_missed_shots],
+                  "foul leading to goal": [nb_foul_leading_to_goal],
+                  "bad pass leading to goal": [nb_bad_pass_leading_to_goal],
+                  "bad consecutive passes": [nb_bad_consecutive_passes], "goals conceded": [nb_goals_conceded],
+                  "consecutive losses": [nb_consecutive_losses]}).set_index(
             "competition_name"))
 
     aggregates = pd.concat(aggregates).merge(
@@ -93,25 +93,84 @@ def competition_games_players():
     return aggregates
 
 
-def get_player_aggregates():
+def convert_team_to_player_setback(team_setbacks: pd.DataFrame, player_games: pd.DataFrame, actions: pd.DataFrame,
+                                   players: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
+    players_by_id = players.set_index("player_id", drop=False)
+    player_setbacks = []
+    player_games = player_games.merge(teams[["team_id", "team_name_short"]], left_on="team_id", right_on="team_id")
+
+    for team_setback in team_setbacks.itertuples():
+        actions_in_game = actions[actions.game_id == team_setback.game_id]
+
+        # group_by_period = actions_in_game[actions_in_game.period_id != 5].groupby("period_id")
+        # last_action_in_period = []
+        # for _, period in group_by_period:
+        #     last_action_in_period.append(round(period.time_seconds.max() / 60))
+        # minutes_before_period = sum(last_action_in_period[:team_setback.period_id - 1])
+        minute_of_setback = round(team_setback.time_seconds / 60) + 45
+
+        players_in_game = player_games[
+            (player_games.game_id == team_setback.game_id) & (player_games.team_name_short == team_setback.team)]
+        players_on_field = []
+        for player in players_in_game[players_in_game.is_starter].itertuples():
+            if player.minutes_played > minute_of_setback:
+                players_on_field.append(player)
+
+        for player in players_in_game[~players_in_game.is_starter].itertuples():
+            if (players_in_game.minutes_played.max() - player.minutes_played) < minute_of_setback:
+                players_on_field.append(player)
+
+        for player in players_on_field:
+            player = players_by_id.loc[player.player_id]
+            player_setbacks.append(pd.DataFrame(
+                data={"player": [player.nickname], "player_id": [player.player_id], "birth_date": [player.birth_date],
+                      "player_team": [team_setback.team], "opponent_team": [team_setback.opponent],
+                      "game_id": [team_setback.game_id], "home": [team_setback.home], "setback_type": ["goal conceded"],
+                      "period_id": [team_setback.period_id], "time_seconds": [team_setback.time_seconds],
+                      "score:": [team_setback.score]}))
+
+    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
+    return player_setbacks
+
+
+def get_player_aggregates(normalize=True) -> pd.DataFrame:
     _spadl = spadl
     datafolder = "default_data"
 
     spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
 
     with pd.HDFStore(spadl_h5) as spadlstore:
         competitions = spadlstore["competitions"]
         players = spadlstore["players"]
         player_games = spadlstore["player_games"]
+        games = spadlstore["games"]
+        teams = spadlstore["teams"]
+        all_actions = []
+        for game_id in games.game_id:
+            actions = spadlstore[f"actions/game_{game_id}"]
+            actions = _spadl.add_names(actions)
+            all_actions.append(actions)
 
-    for competition in competitions.itertuples():
-        player_setbacks, team_setbacks, team_setbacks_over_matches = sb.get_setbacks([competition.competition_name],
-                                                                                     atomic=False)
+    with pd.HDFStore(setbacks_h5) as setbackstore:
+        player_setbacks = setbackstore["player_setbacks"]
+        team_setbacks = setbackstore["teams_setbacks"]
+        team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
-    # for player in tqdm(list(players.itertuples()), desc="Collecting aggregates for players: "):
+    player_setbacks = pd.concat(
+        [player_setbacks, convert_team_to_player_setback(team_setbacks, player_games, actions, players, teams)])
 
-
-
+    for player in tqdm(list(players.itertuples()), desc="Collecting aggregates for players: "):
+        games = player_games[player_games.player_id == player.player_id]
+        nb_games = games.shape[0]
+        nb_started = games[games.started].shape[0]
+        minutes_played = games['minutes_played'].sum()
+        avg_minutes = minutes_played / nb_games
+        actions = all_actions[all_actions.player_id == player.player_id]
+        action_counts = pd.Series.to_frame(
+            actions["type_name"].value_counts(normalize=normalize, dropna=False)).T.sort_index(axis=1)
+        setbacks = player_setbacks[player_setbacks.player_id == player.player_id]
+        setback_counts = pd.Series.to_frame(setbacks["setback_type"].value_counts(dropna=False)).T.sort_index(axis=1)
 
 
 def get_competition_aggregates_and_store_to_excel():

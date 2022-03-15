@@ -107,8 +107,7 @@ def get_game_details(setback: pd.Series, games: pd.DataFrame) -> (pd.Series, boo
     return game, home, opponent
 
 
-def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame,
-                         atomic: bool) -> pd.DataFrame:  # TODO: perhaps also remove penalties where rebound is scored
+def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
     """
     Finds all missed penalties (not during penalty shootouts) in the given games and returns them in an appropriate
     dataframe
@@ -118,14 +117,17 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame,
     :param atomic: boolean flag indicating whether or not the actions are atomic
     :return: a dataframe of all missed penalties in the given games
     """
+    print("Finding missed penalties... ")
+    print()
+
     # Select all penalties that do not occur during penalty shootouts
     missed_penalties = actions[(actions.type_name == "shot_penalty") & (~(actions.period_id == 5))]
 
     # Remove penalties which result in a goal
     for index, mp in missed_penalties.iterrows():
         fa = actions[(actions.game_id == mp.game_id) & (actions.period_id == mp.period_id) & (
-                    actions.time_seconds >= mp.time_seconds) & (
-                                 actions.time_seconds < (mp.time_seconds + 5))]  # fa = following actions
+                actions.time_seconds >= mp.time_seconds) & (
+                             actions.time_seconds < (mp.time_seconds + 5))]  # fa = following actions
         if not atomic:
             shotlike = {"shot", "shot_penalty", "shot_freekick"}
             fa = fa[
@@ -146,12 +148,11 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame,
         game, home, opponent = get_game_details(mp, games)
         score = get_score(game, actions[actions.game_id == game.game_id], mp, atomic)
 
-        mp_setbacks.append(
-            pd.DataFrame(data=np.array(
-                [[mp.nickname, mp.player_id, mp.birth_date, mp.team_name_short, opponent, mp.game_id, home,
-                  "missed penalty", mp.period_id, mp.time_seconds, score]]),
-                columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
-                         "home", "setback_type", "period_id", "time_seconds", "score"]))
+        mp_setbacks.append(pd.DataFrame(
+            data={"player": [mp.nickname], "player_id": [mp.player_id], "birth_date": [mp.birth_date],
+                  "player_team": [mp.team_name_short], "opponent_team": [opponent], "game_id": [mp.game_id],
+                  "home": [home], "setback_type": ["missed penalty"], "period_id": [mp.period_id],
+                  "time_seconds": [mp.time_seconds], "score:": [score]}))
 
     mp_setbacks = pd.concat(mp_setbacks).reset_index(drop=True)
     return mp_setbacks
@@ -167,6 +168,9 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
     :param atomic: boolean flag indicating whether or not the actions are atomic
     :return: a dataframe of all the missed shots in the given games
     """
+    print("Finding missed shots... ")
+    print()
+
     # Select all shots in the given games
     shots = actions[actions.type_name == "shot"]
     shots = shots.merge(games[["game_id", "competition_id"]], left_on="game_id", right_on="game_id")
@@ -222,30 +226,34 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
         game, home, opponent = get_game_details(ms, games)
         score = get_score(game, actions[actions.game_id == game.game_id], ms, atomic)
 
-        ms_setbacks.append(
-            pd.DataFrame(data=np.array(
-                [[ms.nickname, ms.player_id, ms.birth_date, ms.team_name_short, opponent, ms.game_id, home,
-                  "missed shot", ms.period_id, ms.time_seconds, score]]),
-                columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
-                         "home", "setback_type", "period_id", "time_seconds", "score"]))
+        ms_setbacks.append(pd.DataFrame(
+            data={"player": [ms.nickname], "player_id": [ms.player_id], "birth_date": [ms.birth_date],
+                  "player_team": [ms.team_name_short], "opponent_team": [opponent], "game_id": [ms.game_id],
+                  "home": [home], "setback_type": ["missed shot"], "period_id": [ms.period_id],
+                  "time_seconds": [ms.time_seconds], "score:": [score]}))
 
     ms_setbacks = pd.concat(ms_setbacks).reset_index(drop=True)
     return ms_setbacks
 
 
-def get_game_details_gc(goal: pd.Series, games: pd.DataFrame, owngoal: bool) -> (pd.Series, bool, str):
+def get_game_details_gc(goal: pd.Series, games: pd.DataFrame, owngoal: bool) -> (pd.Series, bool, str, str):
     game = games[games.game_id == goal.game_id].iloc[0]
     if ((goal.team_id == game.home_team_id) and not owngoal) or ((goal.team_id != game.home_team_id) and owngoal):
         home = False
         gc_team = game.away_team_name_short
+        opponent = game.home_team_name_short
     else:
         home = True
         gc_team = game.home_team_name_short
+        opponent = game.away_team_name_short
 
-    return game, home, gc_team
+    return game, home, gc_team, opponent
 
 
 def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    print("Finding conceded goals... ")
+    print()
+
     if not atomic:
         shotlike = {"shot", "shot_penalty", "shot_freekick"}
         goals = actions[((actions.type_name.isin(shotlike)) & (actions.result_name == "success")) | (
@@ -256,20 +264,22 @@ def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) 
     gc_setbacks = []
     for goal in goals.itertuples():
         owngoal = goal.result_name == "owngoal" if not atomic else goal.type_name == "owngoal"
-        game, home, gc_team = get_game_details_gc(goal, games, owngoal)
+        game, home, gc_team, opponent = get_game_details_gc(goal, games, owngoal)
         score = get_score(game, actions[actions.game_id == game.game_id], goal, atomic)
 
-        gc_setbacks.append(
-            pd.DataFrame(data=np.array(
-                [[gc_team, goal.team_name_short, goal.game_id, home, "goal conceded", goal.period_id, goal.time_seconds,
-                  score]]
-            ), columns=["team", "opponent", "game_id", "home", "setback_type", "period_id", "time_seconds", "score"]))
+        gc_setbacks.append(pd.DataFrame(
+            data={"team": [gc_team], "opponent": [opponent], "game_id": [goal.game_id], "home": [home],
+                  "setback_type": ["goal conceded"], "period_id": [goal.period_id], "time_seconds": [goal.time_seconds],
+                  "score": [score]}))
 
     gc_setbacks = pd.concat(gc_setbacks).reset_index(drop=True)
     return gc_setbacks
 
 
 def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    print("Finding fouls leading to goals... ")
+    print()
+
     freekick_like = {"shot_penalty", "freekick", "freekick_crossed", "freekick_short",
                      "shot_freekick"}  # atomic (freekick) and default (others) (shot_penalty both) combined
     freekicks = actions[actions.type_name.isin(freekick_like) & (actions.shift(1).type_name == "foul")]
@@ -299,20 +309,20 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
             game, home, opponent = get_game_details(foul, games)
             score = get_score(game, actions[actions.game_id == game.game_id], foul, atomic)
 
-            fltg_setbacks.append(
-                pd.DataFrame(data=np.array(
-                    [[foul.nickname, foul.player_id, foul.birth_date, foul.team_name_short, opponent, foul.game_id,
-                      home,
-                      "foul leading to goal", foul.period_id, foul.time_seconds, score]]
-                ), columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
-                            "home", "setback_type", "period_id", "time_seconds", "score"])
-            )
+            fltg_setbacks.append(pd.DataFrame(
+                data={"player": [foul.nickname], "player_id": [foul.player_id], "birth_date": [foul.birth_date],
+                      "player_team": [foul.team_name_short], "opponent_team": [opponent], "game_id": [foul.game_id],
+                      "home": [home], "setback_type": ["missed penalty"], "period_id": [foul.period_id],
+                      "time_seconds": [foul.time_seconds], "score:": [score]}))
 
     fltg_setbacks = pd.concat(fltg_setbacks).reset_index(drop=True)
     return fltg_setbacks
 
 
 def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    print("Finding bad pass leading to goal... ")
+    print()
+
     if not atomic:
         shotlike = {"shot", "shot_penalty", "shot_freekick"}
         goals = actions[((actions.type_name.isin(shotlike)) & (actions.result_name == "success")) | (
@@ -345,21 +355,21 @@ def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
             game, home, opponent = get_game_details(bad_pass, games)
             score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
 
-            bpltg_setbacks.append(
-                pd.DataFrame(data=np.array(
-                    [[bad_pass.nickname, bad_pass.player_id, bad_pass.birth_date, bad_pass.team_name_short, opponent,
-                      bad_pass.game_id,
-                      home,
-                      "bad pass leading to goal", bad_pass.period_id, bad_pass.time_seconds, score]]
-                ), columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
-                            "home", "setback_type", "period_id", "time_seconds", "score"])
-            )
+            bpltg_setbacks.append(pd.DataFrame(
+                data={"player": [bad_pass.nickname], "player_id": [bad_pass.player_id],
+                      "birth_date": [bad_pass.birth_date], "player_team": [bad_pass.team_name_short],
+                      "opponent_team": [opponent], "game_id": [bad_pass.game_id], "home": [home],
+                      "setback_type": ["missed penalty"], "period_id": [bad_pass.period_id],
+                      "time_seconds": [bad_pass.time_seconds], "score:": [score]}))
 
     bpltg_setbacks = pd.concat(bpltg_setbacks).reset_index(drop=True)
     return bpltg_setbacks
 
 
 def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    print("Finding bad consecutive passes... ")
+    print()
+
     last_bad_pass_in_seq = []
     grouped_by_game = actions.groupby("game_id")
     for game_id, game_actions in grouped_by_game:
@@ -409,13 +419,12 @@ def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: b
         game, home, opponent = get_game_details(bad_pass, games)
         score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
 
-        bpis_setbacks.append(
-            pd.DataFrame(data=np.array(
-                [[bad_pass.nickname, bad_pass.player_id, bad_pass.birth_date, bad_pass.team_name_short, opponent,
-                  bad_pass.game_id, home,
-                  "consecutive bad passes", bad_pass.period_id, bad_pass.time_seconds, score]]),
-                columns=["player", "player_id", "birth_date", "player_team", "opponent_team", "game_id",
-                         "home", "setback_type", "period_id", "time_seconds_last_bad_pass", "score"]))
+        bpis_setbacks.append(pd.DataFrame(
+            data={"player": [bad_pass.nickname], "player_id": [bad_pass.player_id],
+                  "birth_date": [bad_pass.birth_date], "player_team": [bad_pass.team_name_short],
+                  "opponent_team": [opponent], "game_id": [bad_pass.game_id], "home": [home],
+                  "setback_type": ["missed penalty"], "period_id": [bad_pass.period_id],
+                  "time_seconds": [bad_pass.time_seconds], "score:": [score]}))
 
     bpis_setbacks = pd.concat(bpis_setbacks).reset_index(drop=True)
     return bpis_setbacks
@@ -434,6 +443,9 @@ def lost_game(game: pd.Series, team_id: int) -> bool:
 
 
 def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite using betting odds
+    print("Finding consecutive losses... ")
+    print()
+
     cl_setbacks = []
     games_by_home_team = games.groupby('home_team_id')
     games_by_away_team = games.groupby('away_team_id')
@@ -461,16 +473,16 @@ def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite us
 
         for loss in last_loss_in_seq.itertuples():
             team = loss.home_team_name_short if loss.home_team_id == team_id else loss.away_team_name_short
-            cl_setbacks.append(
-                pd.DataFrame(data=np.array(
-                    [[team, loss.game_date, loss.competition_name, "consecutive losses"]]
-                ), columns=["team", "game_date_last_loss", "competition", "setback_type"]))
+
+            cl_setbacks.append(pd.DataFrame(
+                data={"team": [team], "game_date_last_loss": [loss.game_date], "competition": [loss.competition_name],
+                      "setback_type": ["consecutive losses"]}))
 
     cl_setbacks = pd.concat(cl_setbacks).reset_index(drop=True)
     return cl_setbacks
 
 
-def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
+def get_setbacks(competitions: List[str], atomic=True):
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -507,20 +519,21 @@ def get_setbacks(competitions: List[str], atomic=True) -> pd.DataFrame:
     all_actions = pd.concat(all_actions).reset_index(drop=True)
     all_actions = left_to_right(games, all_actions, _spadl)
 
-    # player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
-    #                    foul_leading_to_goal(games, all_actions, atomic),
-    #                    bad_pass_leading_to_goal(games, all_actions, atomic),
-    #                    bad_consecutive_passes(games, all_actions, atomic)]
-    # player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
-    #
-    # team_setbacks = [get_goal_conceded(games, all_actions, atomic)]
-    # team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
-    #
-    # team_setbacks_over_matches = consecutive_losses(games)
+    player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
+                       foul_leading_to_goal(games, all_actions, atomic),
+                       bad_pass_leading_to_goal(games, all_actions, atomic),
+                       bad_consecutive_passes(games, all_actions, atomic)]
+    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
 
-    # print()
-    # print(pd.concat(player_setbacks))
-    # print()
-    # print()
-    # print(pd.concat(team_setbacks))
+    team_setbacks = [get_goal_conceded(games, all_actions, atomic)]
+    team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
+
+    team_setbacks_over_matches = consecutive_losses(games)
+
+    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
+    with pd.HDFStore(setbacks_h5) as setbackstore:
+        setbackstore["player_setbacks"] = player_setbacks
+        setbackstore["teams_setbacks"] = team_setbacks
+        setbackstore["team_setbacks_over_matches"] = team_setbacks_over_matches
+
     # return player_setbacks, team_setbacks, team_setbacks_over_matches
