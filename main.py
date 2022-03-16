@@ -17,6 +17,8 @@ from aggregates import get_competition_aggregates_and_store_to_excel
 from aggregates import competition_games_players
 from setbacks import get_setbacks
 from aggregates import convert_team_to_player_setback
+from aggregates import extend_with_playerlist
+from aggregates import get_player_aggregates
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -93,7 +95,7 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    get_setbacks(all_competitions, False)
+    # get_setbacks(all_competitions, False)
 
     # root = os.path.join(os.getcwd(), 'wyscout_data')
     # with open(os.path.join(root, "matches_Germany.json"), 'rt',
@@ -133,6 +135,8 @@ if __name__ == '__main__':
         player_setbacks = setbackstore["player_setbacks"]
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
+
+    get_player_aggregates(False)
 
     # print(type(games.game_date.dt.date.iloc[0]))
     # print(games.game_date.dt.date.iloc[0])

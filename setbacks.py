@@ -312,7 +312,7 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
             fltg_setbacks.append(pd.DataFrame(
                 data={"player": [foul.nickname], "player_id": [foul.player_id], "birth_date": [foul.birth_date],
                       "player_team": [foul.team_name_short], "opponent_team": [opponent], "game_id": [foul.game_id],
-                      "home": [home], "setback_type": ["missed penalty"], "period_id": [foul.period_id],
+                      "home": [home], "setback_type": ["foul leading to goal"], "period_id": [foul.period_id],
                       "time_seconds": [foul.time_seconds], "score:": [score]}))
 
     fltg_setbacks = pd.concat(fltg_setbacks).reset_index(drop=True)
@@ -359,7 +359,7 @@ def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
                 data={"player": [bad_pass.nickname], "player_id": [bad_pass.player_id],
                       "birth_date": [bad_pass.birth_date], "player_team": [bad_pass.team_name_short],
                       "opponent_team": [opponent], "game_id": [bad_pass.game_id], "home": [home],
-                      "setback_type": ["missed penalty"], "period_id": [bad_pass.period_id],
+                      "setback_type": ["bad pass leading to goal"], "period_id": [bad_pass.period_id],
                       "time_seconds": [bad_pass.time_seconds], "score:": [score]}))
 
     bpltg_setbacks = pd.concat(bpltg_setbacks).reset_index(drop=True)
@@ -423,7 +423,7 @@ def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: b
             data={"player": [bad_pass.nickname], "player_id": [bad_pass.player_id],
                   "birth_date": [bad_pass.birth_date], "player_team": [bad_pass.team_name_short],
                   "opponent_team": [opponent], "game_id": [bad_pass.game_id], "home": [home],
-                  "setback_type": ["missed penalty"], "period_id": [bad_pass.period_id],
+                  "setback_type": ["bad consecutive passes"], "period_id": [bad_pass.period_id],
                   "time_seconds": [bad_pass.time_seconds], "score:": [score]}))
 
     bpis_setbacks = pd.concat(bpis_setbacks).reset_index(drop=True)
@@ -470,7 +470,7 @@ def add_odds_to_games(games: pd.DataFrame) -> pd.DataFrame:
     return games_odds
 
 
-def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite using betting odds
+def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
     print("Finding consecutive losses... ")
     print()
 
@@ -501,10 +501,12 @@ def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite us
 
         for cons_loss in cons_losses:
             last_loss = cons_loss.iloc[-1]
-            team = last_loss.home_team_name_short if last_loss.home_team_id == team_id else last_loss.away_team_name_short
+            team = last_loss.home_team_name_short if last_loss.home_team_id == team_id \
+                else last_loss.away_team_name_short
 
             cl_setbacks.append(pd.DataFrame(
-                data={"team": [team], "lost game(s)": [cons_loss['game_id'].tolist()], "game_date_last_loss": [last_loss.game_date], "competition": [last_loss.competition_name],
+                data={"team": [team], "lost game(s)": [cons_loss['game_id'].tolist()],
+                      "game_date_last_loss": [last_loss.game_date], "competition": [last_loss.competition_name],
                       "setback_type": ["consecutive losses"]}))
 
     cl_setbacks = pd.concat(cl_setbacks).reset_index(drop=True)

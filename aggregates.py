@@ -26,7 +26,7 @@ def _get_action_aggregates_in_competition(spadl_h5: str, competition_id: int, ga
     return action_counts
 
 
-def _get_action_aggregates(atomic=True, normalize=True) -> pd.DataFrame:
+def _get_action_aggregates(atomic=True, normalize=False) -> pd.DataFrame:
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -51,7 +51,8 @@ def _get_action_aggregates(atomic=True, normalize=True) -> pd.DataFrame:
     return aggregates
 
 
-def competition_games_players():
+def competition_games_players(player_setbacks: pd.DataFrame, team_setbacks: pd.DataFrame,
+                              team_setbacks_over_matches: pd.DataFrame) -> pd.DataFrame:
     spadl_h5 = os.path.join("atomic_data", "spadl.h5")
 
     with pd.HDFStore(spadl_h5) as spadlstore:
@@ -64,8 +65,6 @@ def competition_games_players():
         games_in_competition = games[games.competition_id == competition.competition_id]
         nb_games = games_in_competition.shape[0]
         nb_players = len(player_games[player_games.game_id.isin(games_in_competition.game_id)].player_id.unique())
-        player_setbacks, team_setbacks, team_setbacks_over_matches = sb.get_setbacks([competition.competition_name],
-                                                                                     atomic=False)
 
         nb_missed_penalties = player_setbacks[player_setbacks.setback_type == "missed penalty"].shape[0]
         nb_missed_shots = player_setbacks[player_setbacks.setback_type == "missed shot"].shape[0]
@@ -99,7 +98,7 @@ def convert_team_to_player_setback(team_setbacks: pd.DataFrame, player_games: pd
     player_setbacks = []
     player_games = player_games.merge(teams[["team_id", "team_name_short"]], left_on="team_id", right_on="team_id")
 
-    for team_setback in team_setbacks.itertuples():
+    for team_setback in tqdm(list(team_setbacks.itertuples()), desc="Converting team to player setbacks:"):
         actions_in_game = actions[actions.game_id == team_setback.game_id]
 
         group_by_period = actions_in_game[actions_in_game.period_id != 5].groupby("period_id")
@@ -133,7 +132,21 @@ def convert_team_to_player_setback(team_setbacks: pd.DataFrame, player_games: pd
     return player_setbacks
 
 
-def get_player_aggregates(normalize=True) -> pd.DataFrame:
+def players_in_all_games(player_games: pd.DataFrame, game_ids: list) -> list:
+    games = player_games[player_games['game_id'].isin(game_ids)]
+    nb_games = games['player_id'].value_counts()
+    all_games_played = nb_games[nb_games > int(len(game_ids) / 2)]
+    return all_games_played.index.tolist()
+
+
+def extend_with_playerlist(team_setbacks_over_matches: pd.DataFrame, player_games: pd.DataFrame) -> pd.DataFrame:
+    team_setbacks_over_matches['playerlist'] = team_setbacks_over_matches.apply(
+        lambda x: players_in_all_games(player_games, x['lost game(s)']), axis=1
+    )
+    return team_setbacks_over_matches
+
+
+def get_player_aggregates(normalize=False) -> pd.DataFrame:
     _spadl = spadl
     datafolder = "default_data"
 
@@ -141,36 +154,56 @@ def get_player_aggregates(normalize=True) -> pd.DataFrame:
     setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
 
     with pd.HDFStore(spadl_h5) as spadlstore:
-        competitions = spadlstore["competitions"]
         players = spadlstore["players"]
         player_games = spadlstore["player_games"]
         games = spadlstore["games"]
         teams = spadlstore["teams"]
         all_actions = []
-        for game_id in games.game_id:
+        for game_id in tqdm(list(games.game_id), desc="Collecting all actions: "):
             actions = spadlstore[f"actions/game_{game_id}"]
             actions = _spadl.add_names(actions)
             all_actions.append(actions)
+
+    all_actions = pd.concat(all_actions).reset_index(drop=True)
 
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore["player_setbacks"]
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
-    player_setbacks = pd.concat(
-        [player_setbacks, convert_team_to_player_setback(team_setbacks, player_games, actions, players, teams)])
+    # player_setbacks = pd.concat(
+    #     [player_setbacks, convert_team_to_player_setback(team_setbacks, player_games, actions, players, teams)])
+    team_setbacks_over_matches = extend_with_playerlist(team_setbacks_over_matches, player_games)
 
     for player in tqdm(list(players.itertuples()), desc="Collecting aggregates for players: "):
         games = player_games[player_games.player_id == player.player_id]
         nb_games = games.shape[0]
-        nb_started = games[games.started].shape[0]
+        nb_started = games[games['is_starter']].shape[0]
         minutes_played = games['minutes_played'].sum()
         avg_minutes = minutes_played / nb_games
+
         actions = all_actions[all_actions.player_id == player.player_id]
         action_counts = pd.Series.to_frame(
             actions["type_name"].value_counts(normalize=normalize, dropna=False)).T.sort_index(axis=1)
+
         setbacks = player_setbacks[player_setbacks.player_id == player.player_id]
-        setback_counts = pd.Series.to_frame(setbacks["setback_type"].value_counts(dropna=False)).T.sort_index(axis=1)
+        setback_type1 = setbacks[['setback_type']]
+        setback_type2 = team_setbacks_over_matches[pd.DataFrame(team_setbacks_over_matches['playerlist'].tolist()).isin(
+            [player.player_id]).any(axis=1).values][['setback_type']]
+        setback_type = pd.concat([setback_type1, setback_type2]).reset_index(drop=True)
+        # inaccurate = opportunity[pd.DataFrame(opportunity.tags.tolist()).isin([1802]).any(axis=1).values]
+
+        setback_counts = pd.Series.to_frame(setback_type["setback_type"].value_counts(dropna=False)).T.sort_index(
+            axis=1)
+        print(player.player_name)
+        print(player.position)
+        print(nb_games)
+        print(nb_started)
+        print(minutes_played)
+        print(avg_minutes)
+        print(action_counts)
+        print(setback_counts)
+        print()
 
 
 def get_competition_aggregates_and_store_to_excel():
@@ -179,7 +212,14 @@ def get_competition_aggregates_and_store_to_excel():
     default = _get_action_aggregates(False, False)
     default_normalized = _get_action_aggregates(False, True)
 
-    other_aggregates = competition_games_players()
+    datafolder = "default_data"
+    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
+    with pd.HDFStore(setbacks_h5) as setbackstore:
+        player_setbacks = setbackstore["player_setbacks"]
+        team_setbacks = setbackstore["teams_setbacks"]
+        team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
+
+    other_aggregates = competition_games_players(player_setbacks, team_setbacks, team_setbacks_over_matches)
 
     atomic = pd.merge(atomic, other_aggregates, left_index=True, right_index=True)
     default = default.merge(other_aggregates, left_index=True, right_index=True)
