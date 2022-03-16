@@ -439,44 +439,72 @@ def lost_game(game: pd.Series, team_id: int) -> bool:
         return int(score[0]) > int(score[4])
 
 
-# def add_odds_to_games(games: pd.DataFrame):
+def convert_to_fair_odds(games_odds: pd.DataFrame) -> pd.DataFrame:
+    games_odds['margin'] = games_odds.apply(
+        lambda x: (1 / x['B365H']) + (1 / x['B365D']) + (1 / x['B365A']), axis=1)
+    odds_columns = ['B365H', 'B365D', 'B365A']
+    for column in odds_columns:
+        games_odds[column] = games_odds.apply(
+            lambda x: round((1 / x[column]) / x['margin'], 2), axis=1
+        )
+    games_odds = games_odds.rename(columns={'B365H': 'home_win', 'B365D': 'draw', 'B365A': 'away_win'})
+    return games_odds
 
+
+def add_odds_to_games(games: pd.DataFrame) -> pd.DataFrame:
+    odds = []
+    for competition in list(utils.competition_to_odds.values()):
+        odds.append(pd.read_csv('betting_data/odds_{}.csv'.format(competition)))
+    odds = pd.concat(odds).reset_index(drop=True)
+    odds['Date'] = pd.to_datetime(odds['Date'], yearfirst=True, infer_datetime_format=True).dt.date
+    odds = odds.replace({'HomeTeam': utils.teams_mapping, 'AwayTeam': utils.teams_mapping})
+    odds = odds[['Date', 'HomeTeam', 'AwayTeam', 'B365H', 'B365D', 'B365A']]
+    odds = odds.rename(
+        columns={'HomeTeam': 'home_team_name_short', 'AwayTeam': 'away_team_name_short', 'Date': 'game_date'})
+
+    games['game_date'] = games.game_date.dt.date
+
+    games_odds = games.merge(odds, on=['home_team_name_short', 'away_team_name_short', 'game_date'])
+    games_odds = convert_to_fair_odds(games_odds)
+
+    return games_odds
 
 
 def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite using betting odds
     print("Finding consecutive losses... ")
     print()
 
+    games_odds = add_odds_to_games(games)
+
     cl_setbacks = []
-    games_by_home_team = games.groupby('home_team_id')
-    games_by_away_team = games.groupby('away_team_id')
-    for team_id, games in games_by_home_team:
-        last_loss_in_seq = []
-        games = pd.concat([games, games_by_away_team.get_group(team_id)]).sort_values('game_date')
-        games['lost_game'] = games.apply(lambda x: lost_game(x, team_id), axis=1)
-        grouped_by_loss_wins = games.groupby(
-            [(games.lost_game != games.shift(1).lost_game).cumsum()])
+    games_by_home_team = games_odds.groupby('home_team_id')
+    games_by_away_team = games_odds.groupby('away_team_id')
+    for team_id, games_for_team in games_by_home_team:
+        cons_losses = []
+        games_for_team = pd.concat([games_for_team, games_by_away_team.get_group(team_id)]).sort_values('game_date')
+        games_for_team['lost_game'] = games_for_team.apply(lambda x: lost_game(x, team_id), axis=1)
+        games_for_team['losing_chance'] = games_for_team.apply(
+            lambda x: x['away_win'] if (x['home_team_id'] == team_id) else x['home_win'], axis=1)
+        grouped_by_loss_wins = games_for_team.groupby(
+            [(games_for_team.lost_game != games_for_team.shift(1).lost_game).cumsum()])
 
         for _, lw in grouped_by_loss_wins:
             lw = lw.reset_index(drop=True)
             # don't consider wins
             if not lw.iloc[0].lost_game:
                 continue
-            # only consider at least 3 consecutive losses
-            if lw.shape[0] < 3:
-                continue
-            last_loss_in_seq.append(lw.iloc[2].to_frame().T)
+            lw['cons_loss_chance'] = lw['losing_chance'].cumprod()
+            for index, game in lw.iterrows():
+                if game['cons_loss_chance'] < 0.20:
+                    cons_losses.append(lw[:index + 1])
+                    break
 
-        if not len(last_loss_in_seq) == 0:
-            last_loss_in_seq = pd.concat(last_loss_in_seq).reset_index(drop=True)
-        else:
-            continue
-
-        for loss in last_loss_in_seq.itertuples():
-            team = loss.home_team_name_short if loss.home_team_id == team_id else loss.away_team_name_short
+        for cons_loss in cons_losses:
+            last_loss = cons_loss.iloc[-1]
+            team = last_loss.home_team_name_short if last_loss.home_team_id == team_id else last_loss.away_team_name_short
 
             cl_setbacks.append(pd.DataFrame(
-                data={"team": [team], "game_date_last_loss": [loss.game_date], "competition": [loss.competition_name],
+                data={"team": [team], "lost game(s)": [cons_loss['game_id'].tolist()], "game_date_last_loss": [last_loss.game_date], "competition": [last_loss.competition_name],
                       "setback_type": ["consecutive losses"]}))
 
     cl_setbacks = pd.concat(cl_setbacks).reset_index(drop=True)
@@ -537,4 +565,4 @@ def get_setbacks(competitions: List[str], atomic=True):
         setbackstore["teams_setbacks"] = team_setbacks
         setbackstore["team_setbacks_over_matches"] = team_setbacks_over_matches
 
-    # return player_setbacks, team_setbacks, team_setbacks_over_matches
+    return player_setbacks, team_setbacks, team_setbacks_over_matches

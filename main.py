@@ -93,13 +93,16 @@ if __name__ == '__main__':
         'World Cup'
     ]
 
-    # get_setbacks(all_competitions, False)
+    get_setbacks(all_competitions, False)
 
     # root = os.path.join(os.getcwd(), 'wyscout_data')
     # with open(os.path.join(root, "matches_Germany.json"), 'rt',
     #           encoding='unicode_escape') as wm:
     #     wyscout_matches = pd.DataFrame(json.load(wm))['label']
     # print(wyscout_matches)
+
+    # test = pd.read_csv('betting_data/odds_World_cup.csv')
+    # test['Date'] = pd.to_datetime(test['Date'], yearfirst=True, infer_datetime_format=True).dt.date
 
 
     atomic = False
@@ -131,8 +134,32 @@ if __name__ == '__main__':
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
-    print(teams)
-    print(team_setbacks_over_matches)
+    # print(type(games.game_date.dt.date.iloc[0]))
+    # print(games.game_date.dt.date.iloc[0])
+    # print(team_setbacks_over_matches)
+    # print(games)
+
+    # odds = []
+    # for competition in list(utils.competition_to_odds.values()):
+    #     odds.append(pd.read_csv('betting_data/odds_{}.csv'.format(competition)))
+    # odds = pd.concat(odds).reset_index(drop=True)
+    # odds['Date'] = pd.to_datetime(odds['Date'], yearfirst=True, infer_datetime_format=True).dt.date
+    # odds = odds.replace({'HomeTeam': utils.teams_mapping, 'AwayTeam': utils.teams_mapping})
+    # odds = odds.rename(
+    #     columns={'HomeTeam': 'home_team_name_short', 'AwayTeam': 'away_team_name_short', 'Date': 'game_date'})
+    # games['game_date'] = games.game_date.dt.date
+    #
+    # games_odds = games.merge(odds, on=['home_team_name_short', 'away_team_name_short', 'game_date'])
+    # print(games_odds.head())
+    #
+    # games_odds['margin'] = games_odds.apply(
+    #     lambda x: (1 / x.B365H) + (1 / x.B365D) + (1 / x.B365A), axis=1)
+    # odds_columns = ['B365H', 'B365D', 'B365A']
+    # for column in odds_columns:
+    #     games_odds[column] = games_odds.apply(
+    #         lambda x: round((1 / x[column]) / x.margin, 2), axis=1)
+    #
+    # print(games_odds.head())
 
 
     # print(team_setbacks.head())
