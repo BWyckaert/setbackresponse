@@ -131,7 +131,8 @@ if __name__ == '__main__':
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
-    print(player_games.head(22))
+    print(teams)
+    print(team_setbacks_over_matches)
 
 
     # print(team_setbacks.head())

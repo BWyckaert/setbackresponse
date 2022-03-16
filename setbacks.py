@@ -442,6 +442,7 @@ def lost_game(game: pd.Series, team_id: int) -> bool:
 # def add_odds_to_games(games: pd.DataFrame):
 
 
+
 def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:  # TODO: rewrite using betting odds
     print("Finding consecutive losses... ")
     print()
