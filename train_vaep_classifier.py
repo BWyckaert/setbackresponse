@@ -9,6 +9,7 @@ import numpy as np
 from socceraction.atomic.vaep.base import AtomicVAEP
 from socceraction.vaep.base import VAEP
 from tqdm import tqdm
+from typing import List
 
 warnings.filterwarnings('ignore')
 
@@ -110,7 +111,7 @@ def _rate_actions(games: pd.DataFrame, spadl_h5: str, vaep: VAEP) -> pd.DataFram
     :return:
     """
     predictions = []
-    for game in tqdm(games.itertuples(), "Rating actions:"):
+    for game in tqdm(list(games.itertuples()), "Rating actions:"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
         predictions.append(vaep.rate(game, actions))
 
@@ -141,10 +142,15 @@ def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, 
         df[predicted_action_ratings.columns].to_hdf(predictions_h5, f"game_{int(k)}")
 
 
-def train_model(atomic=True, learner="xgboost", print_eval=False, compute_features_labels=True) -> VAEP:
+def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
+                print_eval=False, compute_features_labels=True, validation_size=0.25) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
 
+    :param validation_size: 
+    :param test_competitions:
+    :param train_competitions:
+    :param compute_features_labels: boolean flag indicating whether to recompute the features and labels
     :param atomic: boolean flag indicating whether or not the actions should be atomic
     :param learner: the learner to be used
     :param print_eval: boolean flag indicating whether or not evaluation metrics should be printed
@@ -164,28 +170,22 @@ def train_model(atomic=True, learner="xgboost", print_eval=False, compute_featur
     labels_h5 = os.path.join(datafolder, "labels.h5")
     predictions_h5 = os.path.join(datafolder, "predictions.h5")
     games = pd.read_hdf(spadl_h5, "games")
+    competitions = pd.read_hdf(spadl_h5, "competitions")
+    games = games.merge(competitions, how='left')
 
     if compute_features_labels:
         _compute_features_and_labels(spadl_h5, features_h5, labels_h5, games, vaep)
 
-    features, labels = _read_features_and_labels(games, features_h5, labels_h5, vaep, _fs)
+    train_games = games[games.competition_name.isin(train_competitions)]
+    test_games = games[games.competition_name.isin(test_competitions)]
 
-    # Stealing this from socceraction/vaep/base.fit()
-    nb_states = len(features)
-    test_size = 0.20
-    idx = np.random.permutation(nb_states)
-    train_idx = idx[:math.floor(nb_states * (1 - test_size))]
-    test_idx = idx[(math.floor(nb_states * (1 - test_size)) + 1):]
+    train_features, train_labels = _read_features_and_labels(train_games, features_h5, labels_h5, vaep, _fs)
+    test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
-    train_features = features.iloc[train_idx]
-    train_labels = labels.iloc[train_idx]
-    test_features = features.iloc[test_idx]
-    test_labels = labels.iloc[test_idx]
-
-    vaep.fit(train_features, train_labels, learner, 0.20)
+    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size)
 
     if print_eval:
         _evaluate(vaep, test_features, test_labels)
 
-    _store_predictions(games, spadl_h5, predictions_h5, _rate_actions(games, spadl_h5, predictions_h5))
+    _store_predictions(games, spadl_h5, predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
     return vaep

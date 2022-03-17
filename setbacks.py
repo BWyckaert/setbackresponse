@@ -254,12 +254,16 @@ def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) 
     print("Finding conceded goals... ")
     print()
 
+    remove_penalty_shootouts = actions[actions.period_id != 5]
+
     if not atomic:
         shotlike = {"shot", "shot_penalty", "shot_freekick"}
-        goals = actions[((actions.type_name.isin(shotlike)) & (actions.result_name == "success")) | (
-                actions.result_name == "owngoal")]
+        goals = remove_penalty_shootouts[((remove_penalty_shootouts.type_name.isin(shotlike)) &
+                                          (remove_penalty_shootouts.result_name == "success")) |
+                                         (remove_penalty_shootouts.result_name == "owngoal")]
     else:
-        goals = actions[(actions.type_name == "goal") | (actions.type_name == "owngoal")]
+        goals = remove_penalty_shootouts[(remove_penalty_shootouts.type_name == "goal") |
+                                         (remove_penalty_shootouts.type_name == "owngoal")]
 
     gc_setbacks = []
     for goal in goals.itertuples():

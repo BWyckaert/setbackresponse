@@ -13,12 +13,12 @@ from tqdm import tqdm
 
 import utils
 from data.data_loader import load_and_convert_wyscout_data
-from aggregates import get_competition_aggregates_and_store_to_excel
+from aggregates import get_competition_aggregates_and_store
 from aggregates import competition_games_players
 from setbacks import get_setbacks
 from aggregates import convert_team_to_player_setback
 from aggregates import extend_with_playerlist
-from aggregates import get_player_aggregates
+from aggregates import get_player_aggregates_and_store
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -116,7 +116,9 @@ if __name__ == '__main__':
         datafolder = "default_data"
 
     spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
     predictions_h5 = os.path.join(datafolder, "predictions.h5")
+    features_h5 = os.path.join(datafolder, 'features.h5')
 
     with pd.HDFStore(spadl_h5) as spadlstore:
         games = (
@@ -130,53 +132,38 @@ if __name__ == '__main__':
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
-    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
+    # print(games)
+
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore["player_setbacks"]
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
-    get_player_aggregates(False)
+    train_competitions = [
+        'Italian first division',
+        # 'English first division',
+        # 'Spanish first division',
+        # 'French first division',
+        # 'German first division',
+        # 'European Championship',
+        'World Cup'
+    ]
 
-    # print(type(games.game_date.dt.date.iloc[0]))
-    # print(games.game_date.dt.date.iloc[0])
-    # print(team_setbacks_over_matches)
-    # print(games)
+    test_competitions = list(set(all_competitions) - set(train_competitions))
 
-    # odds = []
-    # for competition in list(utils.competition_to_odds.values()):
-    #     odds.append(pd.read_csv('betting_data/odds_{}.csv'.format(competition)))
-    # odds = pd.concat(odds).reset_index(drop=True)
-    # odds['Date'] = pd.to_datetime(odds['Date'], yearfirst=True, infer_datetime_format=True).dt.date
-    # odds = odds.replace({'HomeTeam': utils.teams_mapping, 'AwayTeam': utils.teams_mapping})
-    # odds = odds.rename(
-    #     columns={'HomeTeam': 'home_team_name_short', 'AwayTeam': 'away_team_name_short', 'Date': 'game_date'})
-    # games['game_date'] = games.game_date.dt.date
-    #
-    # games_odds = games.merge(odds, on=['home_team_name_short', 'away_team_name_short', 'game_date'])
-    # print(games_odds.head())
-    #
-    # games_odds['margin'] = games_odds.apply(
-    #     lambda x: (1 / x.B365H) + (1 / x.B365D) + (1 / x.B365A), axis=1)
-    # odds_columns = ['B365H', 'B365D', 'B365A']
-    # for column in odds_columns:
-    #     games_odds[column] = games_odds.apply(
-    #         lambda x: round((1 / x[column]) / x.margin, 2), axis=1)
-    #
-    # print(games_odds.head())
+    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
+    #                 learner="xgboost", print_eval=True, compute_features_labels=False, validation_size=0.25)
+
+    tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
+                    learner="xgboost", print_eval=True, compute_features_labels=True, validation_size=0.25)
 
 
-    # print(team_setbacks.head())
-    # print(team_setbacks_over_matches.head())
-    # print(player_setbacks.head())
 
     # for c in ['team_name_short', 'team_name']:
     #     teams[c] = teams[c].apply(
     #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
     #     )
-    # print(teams)
-    # games = games[games.competition_name == "Italian first division"]
-    # #
+
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
     #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
