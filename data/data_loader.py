@@ -65,11 +65,10 @@ def _add_position_to_players(players: pd.DataFrame) -> pd.DataFrame:
     """
     root = os.path.join(os.getcwd(), 'wyscout_data')
     with open(os.path.join(root, "players.json"), 'rt', encoding='utf-8') as wm:
-        wyscout_players = pd.DataFrame(json.load(wm))
-    players = players.merge(wyscout_players[["wyId", "role"]], left_on="player_id", right_on="wyId")
+        wyscout_players = pd.DataFrame(json.load(wm)).rename(columns={'wyId': 'player_id'})
+    players = players.join(wyscout_players[["player_id", "role"]].set_index('player_id'), on='player_id')
     players["role"] = players.apply(lambda x: x.role["name"], axis=1)
     players.rename(columns={'role': 'position'}, inplace=True)
-    players = players[["player_id", "player_name", "nickname", "birth_date", "position"]]
 
     return players
 
@@ -90,14 +89,14 @@ def _load_and_convert_data(games: pd.DataFrame, pwl: PublicWyscoutLoader, atomic
     teams, players = [], []
     actions = {}
     for game in tqdm(list(games.itertuples()), desc="Loading and converting game data"):
-        teams.append(pwl.teams(game.game_id))
+        # teams.append(pwl.teams(game.game_id))
         players.append(pwl.players(game.game_id))
-        events = pwl.events(game.game_id)
-        actions[game.game_id] = convert_to_actions(events, game.home_team_id)
-        if atomic:
-            actions[game.game_id] = convert_to_atomic(actions[game.game_id])
-
-    teams = pd.concat(teams).drop_duplicates(subset='team_id')
+    #     events = pwl.events(game.game_id)
+    #     actions[game.game_id] = convert_to_actions(events, game.home_team_id)
+    #     if atomic:
+    #         actions[game.game_id] = convert_to_atomic(actions[game.game_id])
+    #
+    # teams = pd.concat(teams).drop_duplicates(subset='team_id')
     players = pd.concat(players)
     players = _add_position_to_players(players)
     return teams, players, actions
@@ -124,15 +123,16 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
         # for key in spadlstore.keys():
         #     if "actions/game_" in key:
         #         del spadlstore[key]
-        spadlstore["competitions"] = competitions
-        spadlstore["games"] = games.reset_index(drop=True)
-        spadlstore["teams"] = teams.reset_index(drop=True)
-        spadlstore["players"] = players[['player_id', 'player_name', 'nickname', 'birth_date']].drop_duplicates(
-            subset='player_id').reset_index(drop=True)
+        # spadlstore["competitions"] = competitions
+        # spadlstore["games"] = games.reset_index(drop=True)
+        # spadlstore["teams"] = teams.reset_index(drop=True)
+        # spadlstore["players"] = players[
+        #     ['player_id', 'player_name', 'nickname', 'birth_date', 'position']].drop_duplicates(
+        #     subset='player_id').reset_index(drop=True)
         spadlstore["player_games"] = players[
             ['player_id', 'game_id', 'team_id', 'is_starter', 'minutes_played']].reset_index(drop=True)
-        for game_id in actions.keys():
-            spadlstore[f"actions/game_{game_id}"] = actions[game_id]
+        # for game_id in actions.keys():
+        #     spadlstore[f"actions/game_{game_id}"] = actions[game_id]
 
 
 def load_and_convert_wyscout_data(atomic=True, download=False):

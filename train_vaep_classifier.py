@@ -111,7 +111,7 @@ def _rate_actions(games: pd.DataFrame, spadl_h5: str, vaep: VAEP) -> pd.DataFram
     :return:
     """
     predictions = []
-    for game in tqdm(list(games.itertuples()), "Rating actions:"):
+    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
         predictions.append(vaep.rate(game, actions))
 
@@ -142,7 +142,7 @@ def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, 
         df[predicted_action_ratings.columns].to_hdf(predictions_h5, f"game_{int(k)}")
 
 
-def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
+def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learners=["xgboost"],
                 print_eval=False, compute_features_labels=True, validation_size=0.25) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
@@ -152,7 +152,7 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     :param train_competitions:
     :param compute_features_labels: boolean flag indicating whether to recompute the features and labels
     :param atomic: boolean flag indicating whether or not the actions should be atomic
-    :param learner: the learner to be used
+    :param learners: the learner to be used
     :param print_eval: boolean flag indicating whether or not evaluation metrics should be printed
     :return: a trained vaep model
     """
@@ -182,10 +182,10 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     train_features, train_labels = _read_features_and_labels(train_games, features_h5, labels_h5, vaep, _fs)
     test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
-    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size)
+    for learner in learners:
+        vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size)
+        if print_eval:
+            _evaluate(vaep, test_features, test_labels)
 
-    if print_eval:
-        _evaluate(vaep, test_features, test_labels)
-
-    _store_predictions(games, spadl_h5, predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
+    # _store_predictions(test_games, spadl_h5, predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
     return vaep

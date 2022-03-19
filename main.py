@@ -80,34 +80,22 @@ def get_minutes_before_after(action: pd.Series, player_games: pd.DataFrame, acti
 
 
 if __name__ == '__main__':
-    # load_and_convert_wyscout_data(False)
+    # load_and_convert_wyscout_data(atomic=False)
     # tvc.train_model(False)
     # get_competition_aggregates_and_store_to_excel()
     # competition_games_players()
 
-    all_competitions = [
-        'Italian first division',
-        'English first division',
-        'Spanish first division',
-        'French first division',
-        'German first division',
-        'European Championship',
-        'World Cup'
-    ]
+    # all_competitions = [
+    #     'Italian first division',
+    #     'English first division',
+    #     'Spanish first division',
+    #     'French first division',
+    #     'German first division',
+    #     'European Championship',
+    #     'World Cup'
+    # ]
 
-    # get_setbacks(all_competitions, False)
-
-    # root = os.path.join(os.getcwd(), 'wyscout_data')
-    # with open(os.path.join(root, "matches_Germany.json"), 'rt',
-    #           encoding='unicode_escape') as wm:
-    #     wyscout_matches = pd.DataFrame(json.load(wm))['label']
-    # print(wyscout_matches)
-
-    # test = pd.read_csv('betting_data/odds_World_cup.csv')
-    # test['Date'] = pd.to_datetime(test['Date'], yearfirst=True, infer_datetime_format=True).dt.date
-
-
-    atomic = False
+    atomic = True
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -119,6 +107,7 @@ if __name__ == '__main__':
     setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
     predictions_h5 = os.path.join(datafolder, "predictions.h5")
     features_h5 = os.path.join(datafolder, 'features.h5')
+    labels_h5 = os.path.join(datafolder, 'labels.h5')
 
     with pd.HDFStore(spadl_h5) as spadlstore:
         games = (
@@ -132,32 +121,53 @@ if __name__ == '__main__':
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
-    # print(games)
 
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore["player_setbacks"]
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
+    all_competitions = [
+        'World Cup',
+        'Italian first division',
+        'French first division',
+        'English first division',
+        'Spanish first division',
+        'German first division',
+        'European Championship'
+    ]
+
     train_competitions = [
+        # 'World Cup',
         'Italian first division',
         # 'English first division',
         # 'Spanish first division',
         # 'French first division',
         # 'German first division',
         # 'European Championship',
-        'World Cup'
     ]
 
-    test_competitions = list(set(all_competitions) - set(train_competitions))
-
+    # learners = ['xgboost', 'catboost', 'lightgbm']
+    #
+    # test_competitions = list(set(all_competitions) - set(train_competitions))
+    #
     # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
+    #                 learners=learners, print_eval=True, compute_features_labels=False, validation_size=0.25)
+
+    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
     #                 learner="xgboost", print_eval=True, compute_features_labels=False, validation_size=0.25)
 
-    tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
-                    learner="xgboost", print_eval=True, compute_features_labels=True, validation_size=0.25)
+    # with pd.HDFStore(labels_h5) as labelstore:
+    #     print(labelstore.keys())
+    #     print(labelstore["game_1694391"])
 
+    # with pd.HDFStore(features_h5) as featurestore:
+    #     print(featurestore.keys())
+    #     print(featurestore["game_1694391"].shape)
 
+    # with pd.HDFStore(predictions_h5) as predictionsstore:
+    #     print(predictionsstore.keys())
+    #     print(predictionsstore["game_1694391"].shape)
 
     # for c in ['team_name_short', 'team_name']:
     #     teams[c] = teams[c].apply(
@@ -177,7 +187,6 @@ if __name__ == '__main__':
     #     all_actions.append(actions)
     #
     # all_actions = pd.concat(all_actions).reset_index(drop=True)
-    # print(convert_team_to_player_setback(team_setbacks.iloc[0:10], player_games, all_actions, players, teams))
 
     #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
     #     all_actions.append(pd.concat([actions, values], axis=1))
@@ -236,8 +245,6 @@ if __name__ == '__main__':
 
     # with pd.HDFStore(os.path.join("atomic_data", "spadl.h5")) as atomicstore:
     #     with pd.HDFStore(os.path.join("default_data", "spadl.h5")) as spadlstore:
-    #         atomicstore["games"] = games[['game_id', 'competition_id', 'season_id', 'game_date', 'game_day', 'home_team_id', 'away_team_id', 'label']]
-    #         spadlstore["games"] = games[['game_id', 'competition_id', 'season_id', 'game_date', 'game_day', 'home_team_id', 'away_team_id', 'label']]
             # atomicstore["games"] = spadlstore["games"]
             # atomicstore["competitions"] = spadlstore["competitions"]
             # atomicstore["players"] = spadlstore["players"]
