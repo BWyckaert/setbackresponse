@@ -8,6 +8,7 @@ import socceraction
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
 import train_vaep_classifier as tvc
+import rating_analysis as ra
 
 from tqdm import tqdm
 
@@ -19,6 +20,8 @@ from setbacks import get_setbacks
 from aggregates import convert_team_to_player_setback
 from aggregates import extend_with_playerlist
 from aggregates import get_player_aggregates_and_store
+from train_vaep_classifier import compare_models
+from rating_analysis import get_average_rating_during_game
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -82,18 +85,23 @@ def get_minutes_before_after(action: pd.Series, player_games: pd.DataFrame, acti
 if __name__ == '__main__':
     # load_and_convert_wyscout_data(atomic=False)
     # tvc.train_model(False)
-    # get_competition_aggregates_and_store_to_excel()
     # competition_games_players()
+    # compare_models()
 
-    # all_competitions = [
-    #     'Italian first division',
-    #     'English first division',
-    #     'Spanish first division',
-    #     'French first division',
-    #     'German first division',
-    #     'European Championship',
-    #     'World Cup'
-    # ]
+    # train_competitions = ['German first division']
+    # test_competitions = list(set(utils.all_competitions) - set(train_competitions))
+    #
+    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
+    #                 learner="xgboost", print_eval=False, store_eval=False, compute_features_labels=False,
+    #                 validation_size=0.25)
+    #
+    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
+    #                 learner="lightgbm", print_eval=False, store_eval=False, compute_features_labels=False,
+    #                 validation_size=0.25)
+
+    # get_setbacks(competitions=utils.all_competitions, atomic=False)
+    # get_competition_aggregates_and_store()
+    # get_player_aggregates_and_store()
 
     atomic = True
     if atomic:
@@ -115,56 +123,26 @@ if __name__ == '__main__':
                 .merge(spadlstore["competitions"], how='left')
                 .merge(spadlstore["teams"].add_prefix('home_'), how='left')
                 .merge(spadlstore["teams"].add_prefix('away_'), how='left')
-            )
+        )
         competitions = spadlstore["competitions"]
         players = spadlstore["players"]
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
+    # with pd.HDFStore(setbacks_h5) as setbackstore:
+    #     player_setbacks = setbackstore["player_setbacks"]
+    #     team_setbacks = setbackstore["teams_setbacks"]
+    #     team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
-    with pd.HDFStore(setbacks_h5) as setbackstore:
-        player_setbacks = setbackstore["player_setbacks"]
-        team_setbacks = setbackstore["teams_setbacks"]
-        team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
-
-    all_competitions = [
-        'World Cup',
-        'Italian first division',
-        'French first division',
-        'English first division',
-        'Spanish first division',
-        'German first division',
-        'European Championship'
-    ]
-
-    train_competitions = [
-        # 'World Cup',
-        'Italian first division',
-        # 'English first division',
-        # 'Spanish first division',
-        # 'French first division',
-        # 'German first division',
-        # 'European Championship',
-    ]
-
-    # learners = ['xgboost', 'catboost', 'lightgbm']
-    #
-    # test_competitions = list(set(all_competitions) - set(train_competitions))
-    #
-    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
-    #                 learners=learners, print_eval=True, compute_features_labels=False, validation_size=0.25)
-
-    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
-    #                 learner="xgboost", print_eval=True, compute_features_labels=False, validation_size=0.25)
 
     # with pd.HDFStore(labels_h5) as labelstore:
     #     print(labelstore.keys())
     #     print(labelstore["game_1694391"])
-
+    #
     # with pd.HDFStore(features_h5) as featurestore:
     #     print(featurestore.keys())
     #     print(featurestore["game_1694391"].shape)
-
+    #
     # with pd.HDFStore(predictions_h5) as predictionsstore:
     #     print(predictionsstore.keys())
     #     print(predictionsstore["game_1694391"].shape)
@@ -174,31 +152,44 @@ if __name__ == '__main__':
     #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
     #     )
 
-    # all_actions = []
-    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
-    #     actions = (
-    #         _spadl.add_names(actions)
-    #             .merge(players, how="left")
-    #             .merge(teams, how="left")
-    #             .sort_values(["game_id", "period_id", "action_id"])
-    #             .reset_index(drop=True)
-    #     )
-    #     all_actions.append(actions)
-    #
-    # all_actions = pd.concat(all_actions).reset_index(drop=True)
+    # competitions = competitions[competitions.competition_name != 'German first division']
+    # games = games[games.competition_name != 'German first division']
+    competitions = competitions[competitions.competition_name == 'World Cup']
+    games = games[games.competition_name == 'World Cup']
 
-    #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
-    #     all_actions.append(pd.concat([actions, values], axis=1))
-    # all_actions = pd.concat(all_actions).sort_values(["game_id", "period_id", "time_seconds"]).reset_index(drop=True)
-    # all_actions = all_actions.astype({'player_id': 'int64'})
+    all_actions = []
+    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = (
+            _spadl.add_names(actions)
+                .merge(players, how="left")
+                .merge(teams, how="left")
+                .sort_values(["game_id", "period_id", "action_id"])
+                .reset_index(drop=True)
+        )
+        values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+        all_actions.append(pd.concat([actions, values], axis=1))
+        break
+
+    all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    print(ra.map_big_goal_diff(ra.add_goal_diff(all_actions)))
+    # get_average_rating_during_game(games, all_actions)
+
+    #
+    #
+    # # all_actions = pd.concat(all_actions).sort_values(["game_id", "period_id", "time_seconds"]).reset_index(drop=True)
+    # # all_actions = all_actions.astype({'player_id': 'int64'})
     # if atomic:
-    #     all_actions = all_actions[["game_id", "action_id", "period_id", "player_id", "time_seconds", "type_name",
-    #                                "nickname", "team_name_short", "offensive_value", "defensive_value", "vaep_value"]]
+    #     all_actions = all_actions[["game_id", "nickname", "team_name_short", "period_id", "time_seconds", "x", "y",
+    #                                "dx", "dy", "type_name", "offensive_value", "defensive_value", "vaep_value"]]
     # else:
-    #     all_actions = all_actions[["game_id", "action_id", "period_id", "player_id", "time_seconds", "type_name",
-    #                                "result_name", "nickname", "team_name_short", "offensive_value", "defensive_value",
-    #                                "vaep_value"]]
+    #     all_actions = all_actions[["game_id", "nickname", "team_name_short", "period_id", "time_seconds", "start_x",
+    #                                "start_y", "end_x", "end_y", "type_name", "result_name", "offensive_value",
+    #                                "defensive_value", "vaep_value"]]
+
+    # print(all_actions[all_actions.game_id == 1694391].round(5))
+
+    # print(all_actions[all_actions.game_id == 1694391].round(5))
     #
     #
     # all_actions["nb_actions"] = 1
@@ -242,14 +233,13 @@ if __name__ == '__main__':
     #     print()
     #     print()
 
-
     # with pd.HDFStore(os.path.join("atomic_data", "spadl.h5")) as atomicstore:
     #     with pd.HDFStore(os.path.join("default_data", "spadl.h5")) as spadlstore:
-            # atomicstore["games"] = spadlstore["games"]
-            # atomicstore["competitions"] = spadlstore["competitions"]
-            # atomicstore["players"] = spadlstore["players"]
-            # atomicstore["player_games"] = spadlstore["player_games"]
-            # atomicstore["teams"] = spadlstore["teams"]
-            # for game in tqdm(spadlstore["games"].itertuples(), desc="Converting to atomic SPADL: "):
-            #     actions = spadlstore[f"actions/game_{game.game_id}"]
-            #     atomicstore[f"actions/game_{game.game_id}"] = aspadl.convert_to_atomic(actions)
+    # atomicstore["games"] = spadlstore["games"]
+    # atomicstore["competitions"] = spadlstore["competitions"]
+    # atomicstore["players"] = spadlstore["players"]
+    # atomicstore["player_games"] = spadlstore["player_games"]
+    # atomicstore["teams"] = spadlstore["teams"]
+    # for game in tqdm(spadlstore["games"].itertuples(), desc="Converting to atomic SPADL: "):
+    #     actions = spadlstore[f"actions/game_{game.game_id}"]
+    #     atomicstore[f"actions/game_{game.game_id}"] = aspadl.convert_to_atomic(actions)

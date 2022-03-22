@@ -1,10 +1,9 @@
-import math
 import os
 import warnings
 import pandas as pd
 import socceraction.atomic.vaep.features as afs
 import socceraction.vaep.features as fs
-import numpy as np
+import utils
 
 from socceraction.atomic.vaep.base import AtomicVAEP
 from socceraction.vaep.base import VAEP
@@ -82,7 +81,7 @@ def _read_features_and_labels(games: pd.DataFrame, features_h5: str, labels_h5: 
     return features, labels
 
 
-def _evaluate(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.DataFrame):
+def _print_evaluation(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.DataFrame):
     """
     Print some evaluation metrics.
 
@@ -99,6 +98,23 @@ def _evaluate(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.DataFrame
         print(f"ROC score:  {evaluation[col]['auroc']}")
         print()
     print()
+
+
+def _store_eval(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.DataFrame, training_set: List[str],
+                learner: str, atomic: str, val_size: int):
+    evaluation = vaep.score(test_features, test_labels)
+    with open("results/vaep_tests.txt", "a") as f:
+        f.write("-------------------------------------------------------------------------------------------------- \n")
+        f.write("Atomic: {} \n".format(atomic))
+        f.write("Learner: {} \n".format(learner))
+        f.write("Training set: {} \n".format(training_set))
+        f.write("Validation size: {} \n".format(str(val_size)))
+        for col in evaluation:
+            f.write("\n")
+            f.write("### Label: {} ### \n".format(col))
+            f.write("Brier score loss:  {} \n".format(evaluation[col]['brier']))
+            f.write("ROC score:  {} \n".format(evaluation[col]['auroc']))
+        f.write("\n \n")
 
 
 def _rate_actions(games: pd.DataFrame, spadl_h5: str, vaep: VAEP) -> pd.DataFrame:
@@ -142,17 +158,18 @@ def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, 
         df[predicted_action_ratings.columns].to_hdf(predictions_h5, f"game_{int(k)}")
 
 
-def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learners=["xgboost"],
-                print_eval=False, compute_features_labels=True, validation_size=0.25) -> VAEP:
+def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
+                print_eval=False, store_eval=False, compute_features_labels=True, validation_size=0.25) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
 
-    :param validation_size: 
+    :param store_eval:
+    :param validation_size:
     :param test_competitions:
     :param train_competitions:
     :param compute_features_labels: boolean flag indicating whether to recompute the features and labels
     :param atomic: boolean flag indicating whether or not the actions should be atomic
-    :param learners: the learner to be used
+    :param learner: the learner to be used
     :param print_eval: boolean flag indicating whether or not evaluation metrics should be printed
     :return: a trained vaep model
     """
@@ -182,10 +199,36 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     train_features, train_labels = _read_features_and_labels(train_games, features_h5, labels_h5, vaep, _fs)
     test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
-    for learner in learners:
-        vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size)
-        if print_eval:
-            _evaluate(vaep, test_features, test_labels)
+    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size)
+    if print_eval:
+        _print_evaluation(vaep, test_features, test_labels)
 
-    # _store_predictions(test_games, spadl_h5, predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
+    if store_eval:
+        atomic_str = "yes" if atomic else "no"
+        _store_eval(vaep=vaep, test_features=test_features, test_labels=test_labels, training_set=train_competitions,
+                    learner=learner, atomic=atomic_str, val_size=validation_size)
+
+    _store_predictions(test_games, spadl_h5, predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
     return vaep
+
+
+def compare_models():
+    learners = ['xgboost', 'catboost', 'lightgbm']
+
+    tc1 = ['World Cup']
+    tc2 = ['World Cup', 'European Championship']
+    tc3 = ['German first division']
+    tc4 = ['English first division']
+    tc5 = ['World Cup', 'English first division']
+    tc6 = ['English first division', 'German first division']
+
+    tc = [tc1, tc2, tc3, tc4, tc5, tc6]
+
+    for atomic in [True, False]:
+        for learner in learners:
+            for train_competitions in tc:
+                test_competitions = list(set(utils.all_competitions) - set(train_competitions))
+                train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=atomic,
+                            learner=learner, print_eval=False, store_eval=True, compute_features_labels=False,
+                            validation_size=0.25)
+

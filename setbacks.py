@@ -1,30 +1,12 @@
 import json
 import os
 import pandas as pd
-import numpy as np
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
 import utils
 
 from typing import List
 from tqdm import tqdm
-
-
-def left_to_right(games: pd.DataFrame, actions: pd.DataFrame, _spadl) -> pd.DataFrame:
-    """
-    Changes the given actions such that all actions are performed as if the player plays from left to right
-
-    :param games: a dataframe with all the games from which the actions are taken
-    :param actions: a dataframe with all the actions for which the direction of play should be changed
-    :param _spadl:
-    :return: a dataframe containing the same actions as in actions, but with the direction of play altered such that
-    all actions are performed as if the player plays from left to right
-    """
-    return pd.concat(
-        [
-            _spadl.play_left_to_right(actions[actions.game_id == game.game_id], game.home_team_id) for game in
-            games.itertuples()
-        ])
 
 
 def get_score(game: pd.DataFrame, actions: pd.DataFrame, setback: pd.Series, atomic: bool) -> str:
@@ -517,7 +499,7 @@ def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
     return cl_setbacks
 
 
-def get_setbacks(competitions: List[str], atomic=True):
+def get_setbacks(competitions: List[str], atomic=False):
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -551,8 +533,8 @@ def get_setbacks(competitions: List[str], atomic=True):
             )
             all_actions.append(actions)
 
-    all_actions = pd.concat(all_actions).reset_index(drop=True)
-    all_actions = left_to_right(games, all_actions, _spadl)
+    all_actions = pd.concat(all_actions)
+    all_actions = utils.left_to_right(games, all_actions, _spadl)
 
     player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
                        foul_leading_to_goal(games, all_actions, atomic),

@@ -1,5 +1,25 @@
 import pandas as pd
 
+from tqdm import tqdm
+
+
+def left_to_right(games: pd.DataFrame, actions: pd.DataFrame, _spadl) -> pd.DataFrame:
+    """
+    Changes the given actions such that all actions are performed as if the player plays from left to right
+
+    :param games: a dataframe with all the games from which the actions are taken
+    :param actions: a dataframe with all the actions for which the direction of play should be changed
+    :param _spadl:
+    :return: a dataframe containing the same actions as in actions, but with the direction of play altered such that
+    all actions are performed as if the player plays from left to right
+    """
+    return pd.concat(
+        [
+            _spadl.play_left_to_right(actions[actions.game_id == game.game_id], game.home_team_id) for game in
+            tqdm(list(games.itertuples()), desc="Converting direction of play: ")
+        ]).reset_index(drop=True)
+
+
 index = pd.DataFrame(
     [
         {
@@ -53,6 +73,16 @@ index = pd.DataFrame(
         },
     ]
 ).set_index('competition_id')
+
+all_competitions = [
+    'Italian first division',
+    'English first division',
+    'Spanish first division',
+    'French first division',
+    'German first division',
+    'European Championship',
+    'World Cup'
+]
 
 competition_to_odds = {
     'Italian first division': 'Italy',

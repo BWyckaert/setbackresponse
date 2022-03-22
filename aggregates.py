@@ -114,8 +114,8 @@ def convert_team_to_player_setback(team_setbacks: pd.DataFrame, player_games: pd
         last_action_in_period = []
         for _, period in group_by_period:
             last_action_in_period.append(round(period.time_seconds.max() / 60))
-        minutes_before_period = sum(last_action_in_period[:team_setback.period_id - 1])
-        minute_of_setback = round(team_setback.time_seconds / 60) + minutes_before_period
+        minutes_before_current_period = sum(last_action_in_period[:team_setback.period_id - 1])
+        minute_of_setback = round(team_setback.time_seconds / 60) + minutes_before_current_period
 
         players_in_game = player_games[
             (player_games.game_id == team_setback.game_id) & (player_games.team_name_short == team_setback.team)]
