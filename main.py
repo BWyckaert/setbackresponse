@@ -9,6 +9,7 @@ import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
 import train_vaep_classifier as tvc
 import rating_analysis as ra
+import performance_comparison as pc
 
 from tqdm import tqdm
 
@@ -21,7 +22,10 @@ from aggregates import convert_team_to_player_setback
 from aggregates import extend_with_playerlist
 from aggregates import get_player_aggregates_and_store
 from train_vaep_classifier import compare_models
-from rating_analysis import get_average_rating_during_game
+from rating_analysis import get_rating_progression
+from rating_analysis import get_rating_progression_with_goal_diff
+from rating_analysis import get_rating_analysis_and_store
+from performance_comparison import compare_ingame_setbacks
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -87,14 +91,19 @@ if __name__ == '__main__':
     # tvc.train_model(False)
     # competition_games_players()
     # compare_models()
+    compare_ingame_setbacks()
 
-    # train_competitions = ['German first division']
-    # test_competitions = list(set(utils.all_competitions) - set(train_competitions))
+    train_competitions = ['German first division']
+    test_competitions = list(set(utils.all_competitions) - set(train_competitions))
     #
     # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
-    #                 learner="xgboost", print_eval=False, store_eval=False, compute_features_labels=False,
-    #                 validation_size=0.25)
-    #
+    #                 learner="xgboost", print_eval=True, store_eval=False, compute_features_labels=False,
+    #                 validation_size=0.25, tree_params=dict(n_estimators=100, max_depth=3))
+
+    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
+    #                 learner="catboost", print_eval=True, store_eval=False, compute_features_labels=False,
+    #                 validation_size=0.25, tree_params=dict(eval_metric='BrierScore', loss_function='Logloss', iterations=100, depth=6))
+
     # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
     #                 learner="lightgbm", print_eval=False, store_eval=False, compute_features_labels=False,
     #                 validation_size=0.25)
@@ -103,7 +112,7 @@ if __name__ == '__main__':
     # get_competition_aggregates_and_store()
     # get_player_aggregates_and_store()
 
-    atomic = True
+    atomic = False
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -129,10 +138,10 @@ if __name__ == '__main__':
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
-    # with pd.HDFStore(setbacks_h5) as setbackstore:
-    #     player_setbacks = setbackstore["player_setbacks"]
-    #     team_setbacks = setbackstore["teams_setbacks"]
-    #     team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
+    with pd.HDFStore(setbacks_h5) as setbackstore:
+        player_setbacks = setbackstore["player_setbacks"]
+        team_setbacks = setbackstore["teams_setbacks"]
+        team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
 
     # with pd.HDFStore(labels_h5) as labelstore:
@@ -152,28 +161,61 @@ if __name__ == '__main__':
     #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
     #     )
 
-    # competitions = competitions[competitions.competition_name != 'German first division']
     # games = games[games.competition_name != 'German first division']
-    competitions = competitions[competitions.competition_name == 'World Cup']
-    games = games[games.competition_name == 'World Cup']
+    # games = games[games.competition_name == 'World Cup']
+    games = games[games.competition_name == 'Italian first division']
 
-    all_actions = []
-    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
-        actions = (
-            _spadl.add_names(actions)
-                .merge(players, how="left")
-                .merge(teams, how="left")
-                .sort_values(["game_id", "period_id", "action_id"])
-                .reset_index(drop=True)
-        )
-        values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
-        all_actions.append(pd.concat([actions, values], axis=1))
-        break
+    # all_actions = []
+    # first_period_last_action = []
+    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+    #     actions = (
+    #         _spadl.add_names(actions)
+    #             .merge(players, how="left")
+    #             .merge(teams, how="left")
+    #             .sort_values(["game_id", "period_id", "action_id"])
+    #             .reset_index(drop=True)
+    #     )
+    #     actions = actions[actions['period_id'] != 5]
+    #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+    #     all_actions.append(ra.add_goal_diff(pd.concat([actions, values], axis=1)))
 
-    all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
-    print(ra.map_big_goal_diff(ra.add_goal_diff(all_actions)))
-    # get_average_rating_during_game(games, all_actions)
+
+    # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    # print(all_actions[all_actions['result_name'] == 'offside'])
+    # all_actions = pd.concat(all_actions).reset_index(drop=True)
+    # print(all_actions[all_actions.game_id == 2058012].round(5))
+    # shift = all_actions.shift(-1)
+    # print(shift[(all_actions.type_name == "shot_penalty")])
+    # pc.vaep_comparison_in_game(player_setbacks.iloc[1], all_actions[all_actions.game_id == player_setbacks.iloc[1].game_id])
+    # print(all_actions[(all_actions['type_name'] == 'foul') & (all_actions.shift(1)['type_name'] == 'foul')])
+
+    # for index, action in all_actions[all_actions.type_name == "shot_penalty"].iterrows():
+    #     print(all_actions[index-2: index+2]
+    #           [["game_id", "original_event_id", "action_id", "period_id", "time_seconds", "team_id", "player_id",
+    #             "start_x", "start_y", "end_x", "end_y", "type_id", "type_name", "result_name", "bodypart_id", "offensive_value",
+    #             "defensive_value", "vaep_value"]])
+
+    # get_rating_analysis_and_store(games, all_actions)
+    # print(get_rating_progression(games, all_actions, False))
+    # rating_prog_agg = get_rating_progression(games, all_actions, False)
+    # count, mean, std = get_rating_progression_with_goal_diff(games, all_actions, False)
+    #
+    # print("Rating progression aggregates")
+    # print()
+    # print(rating_prog_agg)
+    # print()
+    # print("Count")
+    # print()
+    # print(count)
+    # print()
+    # print("Mean")
+    # print()
+    # print(mean)
+    # print()
+    # print("Standard deviation")
+    # print()
+    # print(std)
 
     #
     #

@@ -25,6 +25,7 @@ def _compute_features(games: pd.DataFrame, spadl_h5: str, features_h5: str, vaep
     """
     for game in tqdm(list(games.itertuples()), desc=f"Generating and storing features in {features_h5}"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = actions[actions['period_id'] != 5]
         X = vaep.compute_features(game, actions)
         X.to_hdf(features_h5, f"game_{game.game_id}")
 
@@ -40,6 +41,7 @@ def _compute_labels(games: pd.DataFrame, spadl_h5: str, labels_h5: str, vaep: VA
     """
     for game in tqdm(list(games.itertuples()), desc=f"Computing and storing labels in {labels_h5}"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = actions[actions['period_id'] != 5]
         Y = vaep.compute_labels(game, actions)
         Y.to_hdf(labels_h5, f"game_{game.game_id}")
 
@@ -129,6 +131,7 @@ def _rate_actions(games: pd.DataFrame, spadl_h5: str, vaep: VAEP) -> pd.DataFram
     predictions = []
     for game in tqdm(list(games.itertuples()), desc="Rating actions"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = actions[actions['period_id'] != 5]
         predictions.append(vaep.rate(game, actions))
 
     predicted_labels = pd.concat(predictions)
@@ -159,7 +162,7 @@ def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, 
 
 
 def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
-                print_eval=False, store_eval=False, compute_features_labels=True, validation_size=0.25) -> VAEP:
+                print_eval=False, store_eval=False, compute_features_labels=True, validation_size=0.25, tree_params=None) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
 
@@ -199,7 +202,7 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     train_features, train_labels = _read_features_and_labels(train_games, features_h5, labels_h5, vaep, _fs)
     test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
-    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size)
+    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size, tree_params=tree_params)
     if print_eval:
         _print_evaluation(vaep, test_features, test_labels)
 

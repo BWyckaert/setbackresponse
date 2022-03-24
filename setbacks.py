@@ -472,18 +472,18 @@ def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
         games_for_team['losing_chance'] = games_for_team.apply(
             lambda x: x['away_win'] if (x['home_team_id'] == team_id) else x['home_win'], axis=1)
         grouped_by_loss_wins = games_for_team.groupby(
-            [(games_for_team.lost_game != games_for_team.shift(1).lost_game).cumsum()])
+            [(games_for_team['lost_game'] != games_for_team.shift(1)['lost_game']).cumsum()])
 
         for _, lw in grouped_by_loss_wins:
             lw = lw.reset_index(drop=True)
             # don't consider wins
-            if not lw.iloc[0].lost_game:
+            if not lw.iloc[0]['lost_game']:
                 continue
             lw['cons_loss_chance'] = lw['losing_chance'].cumprod()
             for index, game in lw.iterrows():
-                if game['cons_loss_chance'] < 0.20:
+                if game['cons_loss_chance'] < 0.30:
                     cons_losses.append(lw[:index + 1])
-                    break
+                    # break
 
         for cons_loss in cons_losses:
             last_loss = cons_loss.iloc[-1]
@@ -492,14 +492,14 @@ def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
 
             cl_setbacks.append(pd.DataFrame(
                 data={"team": [team], "lost game(s)": [cons_loss['game_id'].tolist()],
-                      "game_date_last_loss": [last_loss.game_date], "competition": [last_loss.competition_name],
-                      "setback_type": ["consecutive losses"]}))
+                      "game_date_last_loss": [last_loss['game_date']], "competition": [last_loss['competition_name']],
+                      "setback_type": ["consecutive losses"], "chance": [last_loss['cons_loss_chance']]}))
 
     cl_setbacks = pd.concat(cl_setbacks).reset_index(drop=True)
     return cl_setbacks
 
 
-def get_setbacks(competitions: List[str], atomic=False):
+def get_setbacks(competitions: List[str], atomic=False) -> tuple:
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"

@@ -2,8 +2,6 @@ import os
 import pandas as pd
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
-import setbacks as sb
-import numpy as np
 
 from tqdm import tqdm
 
