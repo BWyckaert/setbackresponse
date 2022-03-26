@@ -5,23 +5,6 @@ from tqdm import tqdm
 import utils
 
 
-def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
-    goallike = ['goal', 'owngoal']
-    goal_actions = actions[actions['type_name'].isin(goallike)]
-    actions['score_diff'] = 0
-
-    for index, goal in goal_actions.iterrows():
-        if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
-            if goal['type_name'] == 'goal':
-                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
-                    lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
-            if goal['type_name'] == 'owngoal':
-                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
-                    lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
-
-    return actions
-
-
 def map_big_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
     actions['score_diff'] = actions.apply(lambda x: -2 if x['score_diff'] < -2 else x['score_diff'], axis=1)
     actions['score_diff'] = actions.apply(lambda x: 2 if x['score_diff'] > 2 else x['score_diff'], axis=1)
@@ -29,7 +12,7 @@ def map_big_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_rating_progression_with_goal_diff_in_game(actions: pd.DataFrame, per_minute: bool) -> pd.DataFrame:
-    actions = map_big_goal_diff(add_goal_diff(actions))
+    actions = map_big_goal_diff(utils.add_goal_diff_atomic(actions))
     grouped_by_diff = actions.groupby('score_diff')
 
     vaep_mean = []
@@ -55,7 +38,7 @@ def get_rating_progression_with_goal_diff(games: pd.DataFrame, actions: pd.DataF
 
 
 def get_rating_progression_during_game(actions: pd.DataFrame, per_minute: bool) -> pd.DataFrame:
-    actions = utils.add_total_seconds(actions)
+    actions = utils.add_total_seconds_to_game(actions)
 
     chunck_size = 5
     group_by_time_chunks = actions.groupby((actions['total_seconds'] // (chunck_size * 60)).astype(int))

@@ -20,7 +20,7 @@ def left_to_right(games: pd.DataFrame, actions: pd.DataFrame, _spadl) -> pd.Data
         ]).reset_index(drop=True)
 
 
-def add_total_seconds(actions: pd.DataFrame) -> pd.DataFrame:
+def add_total_seconds_to_game(actions: pd.DataFrame) -> pd.DataFrame:
     group_by_period = actions.groupby("period_id")
     last_action_in_period = []
     for _, period in group_by_period:
@@ -28,6 +28,49 @@ def add_total_seconds(actions: pd.DataFrame) -> pd.DataFrame:
 
     actions['total_seconds'] = actions.apply(
         lambda x: x['time_seconds'] + sum(last_action_in_period[: x['period_id'] - 1]), axis=1)
+
+    return actions
+
+
+def add_total_seconds(actions: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
+    extended_actions = []
+    for game_id in tqdm(list(games.game_id), desc="Adding total_seconds to actions: "):
+        extended_actions.append(add_total_seconds_to_game(actions[actions['game_id'] == game_id]))
+
+    return pd.concat(extended_actions).reset_index(drop=True)
+
+
+def add_goal_diff_atomic(actions: pd.DataFrame) -> pd.DataFrame:
+    goallike = ['goal', 'owngoal']
+    goal_actions = actions[actions['type_name'].isin(goallike)]
+    actions['score_diff'] = 0
+
+    for index, goal in goal_actions.iterrows():
+        if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
+            if goal['type_name'] == 'goal':
+                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                    lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
+            if goal['type_name'] == 'owngoal':
+                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                    lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
+
+    return actions
+
+
+def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
+    shotlike = ["shot", "shot_penalty", "shot_freekick"]
+    goal_actions = actions[(actions.type_name.isin(shotlike) & (actions.result_name == "success")) | (
+                    actions.result_name == "owngoal")]
+    actions['score_diff'] = 0
+
+    for index, goal in goal_actions.iterrows():
+        if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
+            if goal['result_name'] == 'success':
+                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                    lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
+            if goal['result_name'] == 'owngoal':
+                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                    lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
 
     return actions
 

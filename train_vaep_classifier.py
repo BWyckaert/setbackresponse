@@ -132,33 +132,28 @@ def _rate_actions(games: pd.DataFrame, spadl_h5: str, vaep: VAEP) -> pd.DataFram
     for game in tqdm(list(games.itertuples()), desc="Rating actions"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
         actions = actions[actions['period_id'] != 5]
-        predictions.append(vaep.rate(game, actions))
+        rating = vaep.rate(game, actions)
+        rating['game_id'] = game.game_id
+        predictions.append(rating)
 
-    predicted_labels = pd.concat(predictions)
-    return predicted_labels.reset_index(drop=True)
+    predictions = pd.concat(predictions).reset_index(drop=True)
+
+    return predictions
 
 
-def _store_predictions(games: pd.DataFrame, spadl_h5: str, predictions_h5: str, predicted_action_ratings: pd.DataFrame):
+def _store_predictions(predictions_h5: str, predictions: pd.DataFrame):
     """
     Stores the predicted action ratings for the actions in the given games in the predictions_h5 file.
 
-    :param games: the games for which the predicted action ratings should be stored
-    :param spadl_h5: location where the spadl.h5 file is stored
     :param predictions_h5: location to store the precticted_labels
-    :param predicted_action_ratings: dataframe containing the prected action ratings for all the actions in the given
+    :param predictions: dataframe containing the prected action ratings for all the actions in the given
            games
     """
-    actions = []
-    for game_id in tqdm(games.game_id, "Loading game ids: "):
-        action_i = pd.read_hdf(spadl_h5, f"actions/game_{game_id}")
-        actions.append(action_i[["game_id"]])
-    actions = pd.concat(actions)
-    actions = actions.reset_index(drop=True)
-
-    grouped_predictions = pd.concat([actions, predicted_action_ratings], axis=1).groupby("game_id")
-    for k, df in tqdm(grouped_predictions, desc="Saving predictions per game"):
-        df = df.reset_index(drop=True)
-        df[predicted_action_ratings.columns].to_hdf(predictions_h5, f"game_{int(k)}")
+    columns = ["offensive_value", "defensive_value", "vaep_value"]
+    grouped_predictions = predictions.groupby("game_id")
+    for game_id, ratings in tqdm(grouped_predictions, desc="Saving predictions per game"):
+        ratings = ratings.reset_index(drop=True)
+        ratings[columns].to_hdf(predictions_h5, f"game_{int(game_id)}")
 
 
 def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
@@ -211,7 +206,7 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
         _store_eval(vaep=vaep, test_features=test_features, test_labels=test_labels, training_set=train_competitions,
                     learner=learner, atomic=atomic_str, val_size=validation_size)
 
-    _store_predictions(test_games, spadl_h5, predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
+    _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
     return vaep
 
 

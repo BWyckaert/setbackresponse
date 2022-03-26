@@ -111,7 +111,7 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
                 actions.time_seconds >= mp.time_seconds) & (
                              actions.time_seconds < (mp.time_seconds + 5))]  # fa = following actions
         if not atomic:
-            shotlike = {"shot", "shot_penalty", "shot_freekick"}
+            shotlike = ["shot", "shot_penalty", "shot_freekick"]
             fa = fa[
                 ((fa.type_name.isin(shotlike)) & (fa.result_name == "success") & (fa.team_id == mp.team_id)) | (
                         (fa.result_name == "owngoal") & ~(fa.team_id == mp.team_id))]

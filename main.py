@@ -4,6 +4,7 @@ import warnings
 from io import BytesIO
 
 import pandas as pd
+import numpy as np
 import socceraction
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
@@ -26,6 +27,7 @@ from rating_analysis import get_rating_progression
 from rating_analysis import get_rating_progression_with_goal_diff
 from rating_analysis import get_rating_analysis_and_store
 from performance_comparison import compare_ingame_setbacks
+import xp_model as xp
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -91,11 +93,11 @@ if __name__ == '__main__':
     # tvc.train_model(False)
     # competition_games_players()
     # compare_models()
-    compare_ingame_setbacks()
+    # compare_ingame_setbacks()
 
     train_competitions = ['German first division']
     test_competitions = list(set(utils.all_competitions) - set(train_competitions))
-    #
+
     # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
     #                 learner="xgboost", print_eval=True, store_eval=False, compute_features_labels=False,
     #                 validation_size=0.25, tree_params=dict(n_estimators=100, max_depth=3))
@@ -162,26 +164,30 @@ if __name__ == '__main__':
     #     )
 
     # games = games[games.competition_name != 'German first division']
-    # games = games[games.competition_name == 'World Cup']
-    games = games[games.competition_name == 'Italian first division']
+    games = games[games.competition_name == 'World Cup']
+    # games = games[games.competition_name == 'Italian first division']
+    #
+    all_actions = []
+    first_period_last_action = []
+    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = actions[actions['period_id'] != 5]
+        actions = (
+            _spadl.add_names(actions)
+                .merge(players, how="left")
+                .merge(teams, how="left")
+                .sort_values(["game_id", "period_id", "action_id"])
+                .reset_index(drop=True)
+        )
+        # values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+        # all_actions.append(pd.concat([actions, values], axis=1))
+        all_actions.append(utils.add_goal_diff(actions))
+        break
 
-    # all_actions = []
-    # first_period_last_action = []
-    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
-    #     actions = (
-    #         _spadl.add_names(actions)
-    #             .merge(players, how="left")
-    #             .merge(teams, how="left")
-    #             .sort_values(["game_id", "period_id", "action_id"])
-    #             .reset_index(drop=True)
-    #     )
-    #     actions = actions[actions['period_id'] != 5]
-    #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
-    #     all_actions.append(ra.add_goal_diff(pd.concat([actions, values], axis=1)))
 
-
-    # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    xp.get_data(games, all_actions)
+    # print(round(all_actions, 4))
     # print(all_actions[all_actions['result_name'] == 'offside'])
     # all_actions = pd.concat(all_actions).reset_index(drop=True)
     # print(all_actions[all_actions.game_id == 2058012].round(5))
