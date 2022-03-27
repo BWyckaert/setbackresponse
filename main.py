@@ -28,6 +28,7 @@ from rating_analysis import get_rating_progression_with_goal_diff
 from rating_analysis import get_rating_analysis_and_store
 from performance_comparison import compare_ingame_setbacks
 import xp_model as xp
+import xgboost
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -95,6 +96,18 @@ if __name__ == '__main__':
     # compare_models()
     # compare_ingame_setbacks()
     # utils.convert_wyscout_to_h5()
+    # root = os.path.join(os.getcwd(), 'xp_model')
+    # data_h5 = os.path.join(root, "data.h5")
+    # with pd.HDFStore(data_h5) as datastore:
+    #     X_test = datastore["X_test"]
+    #     X_train = datastore["X_train"]
+    #     y_test = datastore["y_test"]
+    #     y_train = datastore["y_train"]
+    # xp.train_model()
+    # print(y_test.result_id.unique())
+    # model = xgboost.XGBClassifier()
+    # model.load_model("xp_model/xP_XGBoost.txt")
+    # xp.evaluate(model, X_test, y_test)
 
     train_competitions = ['German first division']
     test_competitions = list(set(utils.all_competitions) - set(train_competitions))
@@ -177,7 +190,6 @@ if __name__ == '__main__':
     # games = games[games.game_id == 2576324]
     # games = games[games.competition_name == 'Italian first division']
     all_actions = []
-    first_period_last_action = []
     for game in tqdm(list(games.itertuples()), desc="Rating actions"):
         actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
         actions = actions[actions['period_id'] != 5]
@@ -194,10 +206,10 @@ if __name__ == '__main__':
         actions = utils.add_player_diff(actions, game, all_events)
         actions = utils.add_goal_diff(actions)
         all_actions.append(actions)
-        # break
 
     all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
     xp.compute_features_and_labels(games, all_actions, ['German first division'])
+    xp.train_model()
     # print(round(all_actions, 4))
     # print(all_actions[all_actions['result_name'] == 'offside'])
     # all_actions = pd.concat(all_actions).reset_index(drop=True)
