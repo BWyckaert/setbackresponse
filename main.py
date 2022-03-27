@@ -94,6 +94,7 @@ if __name__ == '__main__':
     # competition_games_players()
     # compare_models()
     # compare_ingame_setbacks()
+    # utils.convert_wyscout_to_h5()
 
     train_competitions = ['German first division']
     test_competitions = list(set(utils.all_competitions) - set(train_competitions))
@@ -115,6 +116,7 @@ if __name__ == '__main__':
     # get_player_aggregates_and_store()
 
     atomic = False
+    root = os.path.join(os.getcwd(), 'wyscout_data')
     if atomic:
         _spadl = aspadl
         datafolder = "atomic_data"
@@ -145,6 +147,12 @@ if __name__ == '__main__':
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
 
+    all_events = []
+    for competition in utils.index.itertuples():
+        with open(os.path.join(root, competition.db_events), 'rt', encoding='utf-8') as wm:
+            all_events.append(pd.DataFrame(json.load(wm)))
+
+    all_events = pd.concat(all_events)
 
     # with pd.HDFStore(labels_h5) as labelstore:
     #     print(labelstore.keys())
@@ -164,9 +172,10 @@ if __name__ == '__main__':
     #     )
 
     # games = games[games.competition_name != 'German first division']
-    games = games[games.competition_name == 'World Cup']
+    # games = games[games.competition_name == 'World Cup']
+    # games = games[games.competition_name.isin(['World Cup', 'German first division'])]
+    # games = games[games.game_id == 2576324]
     # games = games[games.competition_name == 'Italian first division']
-    #
     all_actions = []
     first_period_last_action = []
     for game in tqdm(list(games.itertuples()), desc="Rating actions"):
@@ -181,12 +190,14 @@ if __name__ == '__main__':
         )
         # values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
         # all_actions.append(pd.concat([actions, values], axis=1))
-        all_actions.append(utils.add_goal_diff(actions))
-        break
-
+        actions = utils.add_total_seconds_to_game(actions)
+        actions = utils.add_player_diff(actions, game, all_events)
+        actions = utils.add_goal_diff(actions)
+        all_actions.append(actions)
+        # break
 
     all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
-    xp.get_data(games, all_actions)
+    xp.compute_features_and_labels(games, all_actions, ['German first division'])
     # print(round(all_actions, 4))
     # print(all_actions[all_actions['result_name'] == 'offside'])
     # all_actions = pd.concat(all_actions).reset_index(drop=True)

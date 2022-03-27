@@ -1,3 +1,7 @@
+import json
+import os
+from typing import cast, Dict, Any, Tuple, List
+
 import pandas as pd
 
 from tqdm import tqdm
@@ -60,7 +64,7 @@ def add_goal_diff_atomic(actions: pd.DataFrame) -> pd.DataFrame:
 def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
     shotlike = ["shot", "shot_penalty", "shot_freekick"]
     goal_actions = actions[(actions.type_name.isin(shotlike) & (actions.result_name == "success")) | (
-                    actions.result_name == "owngoal")]
+            actions.result_name == "owngoal")]
     actions['score_diff'] = 0
 
     for index, goal in goal_actions.iterrows():
@@ -73,6 +77,40 @@ def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
                     lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
 
     return actions
+
+
+def add_player_diff(actions: pd.DataFrame, game: pd.Series, events: pd.DataFrame) -> pd.DataFrame:
+    match_events = events[events['matchId'] == game.game_id]
+    match_events['tags'] = match_events.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
+    red_cards = match_events[pd.DataFrame(match_events.tags.tolist()).isin([1701, 1703]).any(axis=1).values]
+
+    red_cards_both_teams: Dict[int, List[Tuple]] = {}
+    for red_card in red_cards.itertuples():
+        if red_card[0] in red_cards_both_teams:
+            red_cards_both_teams[red_card.teamId].append((red_card.matchPeriod, red_card.eventSec))
+        else:
+            red_cards_both_teams[red_card.teamId] = [(red_card.matchPeriod, red_card.eventSec)]
+
+    actions['player_diff'] = 0
+    if red_cards_both_teams:
+        for team_id in red_cards_both_teams.keys():
+            for red_card in red_cards_both_teams[team_id]:
+                selector = (actions['period_id'] > wp[red_card[0]]) | ((actions['period_id'] == wp[red_card[0]]) &
+                                                                       (actions['time_seconds'] > red_card[1]))
+                actions.loc[selector, 'player_diff'] = actions[selector].apply(
+                    lambda x: x['player_diff'] - 1 if (x['team_id'] == team_id) else x['player_diff'] + 1, axis=1)
+
+    return actions
+
+
+def convert_wyscout_to_h5():
+    root = os.path.join(os.getcwd(), 'wyscout_data')
+    wyscout_h5 = os.path.join('wyscout_data', 'wyscout.h5')
+    with pd.HDFStore(wyscout_h5) as wyscoutstore:
+        for competition in index.itertuples():
+            with open(os.path.join(root, competition.db_events), 'rt', encoding='utf-8') as wm:
+                events = pd.DataFrame(json.load(wm))
+            wyscoutstore[competition.db_events[:-5]] = events
 
 
 index = pd.DataFrame(
@@ -197,3 +235,5 @@ column_order = ['0 to 5', '5 to 10', '10 to 15', '15 to 20', '20 to 25', '25 to 
                 '45 to 50', '50 to 55', '55 to 60', '60 to 65', '65 to 70', '70 to 75', '75 to 80', '80 to 85',
                 '85 to 90', '90 to 95', '95 to 100', '100 to 105', '105 to 110', '110 to 115', '115 to 120',
                 '120 to 125', '125 to 130', '130 to 135']
+
+wp = {'1H': 1, '2H': 2, 'E1': 3, 'E2': 4, 'P': 5}
