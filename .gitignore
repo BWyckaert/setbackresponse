@@ -156,3 +156,7 @@ About
 /wyscout_data/
 /betting_data/
 /aggregates/
+/expected_passing/data.h5
+/expected_passing/xP_CatBoost.txt
+/expected_passing/xP_lightgbm.txt
+/expected_passing/xP_XGBoost.txt

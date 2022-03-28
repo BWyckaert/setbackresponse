@@ -100,7 +100,7 @@ def compare_ingame_setbacks():
     atomic_h5 = os.path.join("atomic_data", "spadl.h5")
     default_h5 = os.path.join("default_data", "spadl.h5")
     setbacks_h5 = os.path.join("default_data", "setbacks.h5")
-    predictions_h5 = os.path.join("atomic_data", "predictions.h5")
+    predictions_h5 = os.path.join("atomic_data", "expected_passing/predictions.h5")
 
     with pd.HDFStore(atomic_h5) as atomicstore:
         games = atomicstore["games"]
