@@ -90,15 +90,15 @@ def _load_and_convert_data(games: pd.DataFrame, pwl: PublicWyscoutLoader, atomic
     actions = {}
     for game in tqdm(list(games.itertuples()), desc="Loading and converting game data"):
         # teams.append(pwl.teams(game.game_id))
-        players.append(pwl.players(game.game_id))
-    #     events = pwl.events(game.game_id)
-    #     actions[game.game_id] = convert_to_actions(events, game.home_team_id)
-    #     if atomic:
-    #         actions[game.game_id] = convert_to_atomic(actions[game.game_id])
-    #
+        # players.append(pwl.players(game.game_id))
+        events = pwl.events(game.game_id)
+        actions[game.game_id] = convert_to_actions(events, game.home_team_id)
+        if atomic:
+            actions[game.game_id] = convert_to_atomic(actions[game.game_id])
+
     # teams = pd.concat(teams).drop_duplicates(subset='team_id')
-    players = pd.concat(players)
-    players = _add_position_to_players(players)
+    # players = pd.concat(players)
+    # players = _add_position_to_players(players)
     return teams, players, actions
 
 
@@ -129,10 +129,10 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
         # spadlstore["players"] = players[
         #     ['player_id', 'player_name', 'nickname', 'birth_date', 'position']].drop_duplicates(
         #     subset='player_id').reset_index(drop=True)
-        spadlstore["player_games"] = players[
-            ['player_id', 'game_id', 'team_id', 'is_starter', 'minutes_played']].reset_index(drop=True)
-        # for game_id in actions.keys():
-        #     spadlstore[f"actions/game_{game_id}"] = actions[game_id]
+        # spadlstore["player_games"] = players[
+        #     ['player_id', 'game_id', 'team_id', 'is_starter', 'minutes_played']].reset_index(drop=True)
+        for game_id in actions.keys():
+            spadlstore[f"actions/game_{game_id}"] = actions[game_id]
 
 
 def load_and_convert_wyscout_data(atomic=True, download=False):

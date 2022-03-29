@@ -183,7 +183,7 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     spadl_h5 = os.path.join(datafolder, "spadl.h5")
     features_h5 = os.path.join(datafolder, "features.h5")
     labels_h5 = os.path.join(datafolder, "labels.h5")
-    predictions_h5 = os.path.join(datafolder, "expected_passing/predictions.h5")
+    predictions_h5 = os.path.join(datafolder, "predictions.h5")
     games = pd.read_hdf(spadl_h5, "games")
     competitions = pd.read_hdf(spadl_h5, "competitions")
     games = games.merge(competitions, how='left')

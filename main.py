@@ -36,77 +36,24 @@ pd.set_option("display.max_rows", None, "display.max_columns", None)
 pd.set_option('display.width', 1000)
 
 
-def get_time(period_id: int, time_seconds: float):
-    if period_id == 1:
-        base = 0
-    elif period_id == 2:
-        base = 45
-    elif period_id == 3:
-        base = 90
-    elif period_id == 4:
-        base = 105
-    elif period_id == 5:
-        base = 120
-
-    m = int(base + time_seconds // 60)
-    s = int(time_seconds % 60)
-    return f"{m}m{s}s"
-
-
-def get_game_length(game_id: int, player_games: pd.DataFrame):
-    players_in_game = player_games[player_games.game_id == game_id]
-    game_length = players_in_game[['minutes_played']].max()
-    return game_length.at['minutes_played']
-
-
-def get_player_minutes(game_id: int, player_id: int, player_games: pd.DataFrame):
-    minutes_played = player_games[(player_games.player_id == player_id) &
-                                  (player_games.game_id == game_id)].reset_index()
-    return minutes_played.at[0, "minutes_played"]
-
-
-def is_starter(game_id: int, player_games: pd.DataFrame, player_id: int):
-    player_game = player_games[(player_games.game_id == game_id) &
-                               (player_games.player_id == player_id)].reset_index()
-    return player_game.at[0, "is_starter"]
-
-
-def get_minutes_before_after(action: pd.Series, player_games: pd.DataFrame, actions_in_game: pd.DataFrame):
-    game_length = get_game_length(action.game_id, player_games)
-    player_minutes = get_player_minutes(action.game_id, action.player_id, player_games)
-    group_by_period = actions_in_game[actions_in_game.period_id != 5].groupby("period_id")
-    last_action_in_period = []
-    for k, df in group_by_period:
-        last_action_in_period.append(round(df.time_seconds.max() / 60))
-
-    minutes_before = sum(last_action_in_period[:action.period_id - 1]) + round(action.time_seconds / 60)
-    minutes_after = sum(last_action_in_period[action.period_id - 1:]) - round(action.time_seconds / 60)
-
-    if is_starter(action.game_id, player_games, action.player_id):
-        minutes_after -= game_length - player_minutes
-    else:
-        minutes_before -= game_length - player_minutes
-    return [minutes_before, minutes_after]
-
-
 if __name__ == '__main__':
-    # load_and_convert_wyscout_data(atomic=False)
+    load_and_convert_wyscout_data(atomic=False)
     # tvc.train_model(False)
     # competition_games_players()
     # compare_models()
     # compare_ingame_setbacks()
     # utils.convert_wyscout_to_h5()
-    data_h5 = "expected_passing/data.h5"
+    # data_h5 = "expected_passing/data.h5"
 
-    filters = ['total_seconds', 'player_diff', 'score_diff']
-    xp.train_model(filters=filters, learner="xgboost")
-    with pd.HDFStore(data_h5) as datastore:
-        X_test = datastore["X_test"]
-        X_train = datastore["X_train"]
-        y_test = datastore["y_test"]
-        y_train = datastore["y_train"]
+    # filters = ['total_seconds', 'player_diff', 'score_diff']
+    # xp.train_model(filters=filters, learner="xgboost")
+    # with pd.HDFStore(data_h5) as datastore:
+    #     X_test = datastore["X_test"]
+    #     X_train = datastore["X_train"]
+    #     y_test = datastore["y_test"]
+    #     y_train = datastore["y_train"]
     # xp.evaluate(X_test, y_test)
-    xp.store_predictions("xgboost", X_test, filters)
+    # xp.store_predictions("xgboost", X_test, filters)
 
     train_competitions = ['German first division']
     test_competitions = list(set(utils.all_competitions) - set(train_competitions))
@@ -127,32 +74,32 @@ if __name__ == '__main__':
     # get_competition_aggregates_and_store()
     # get_player_aggregates_and_store()
 
-    # atomic = False
-    # root = os.path.join(os.getcwd(), 'wyscout_data')
-    # if atomic:
-    #     _spadl = aspadl
-    #     datafolder = "atomic_data"
-    # else:
-    #     _spadl = spadl
-    #     datafolder = "default_data"
-    #
-    # spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    # setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
-    # predictions_h5 = os.path.join(datafolder, "predictions.h5")
-    # features_h5 = os.path.join(datafolder, 'features.h5')
-    # labels_h5 = os.path.join(datafolder, 'labels.h5')
-    #
-    # with pd.HDFStore(spadl_h5) as spadlstore:
-    #     games = (
-    #         spadlstore["games"]
-    #             .merge(spadlstore["competitions"], how='left')
-    #             .merge(spadlstore["teams"].add_prefix('home_'), how='left')
-    #             .merge(spadlstore["teams"].add_prefix('away_'), how='left')
-    #     )
-    #     competitions = spadlstore["competitions"]
-    #     players = spadlstore["players"]
-    #     teams = spadlstore["teams"]
-    #     player_games = spadlstore["player_games"]
+    atomic = True
+    root = os.path.join(os.getcwd(), 'wyscout_data')
+    if atomic:
+        _spadl = aspadl
+        datafolder = "atomic_data"
+    else:
+        _spadl = spadl
+        datafolder = "default_data"
+
+    spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
+    predictions_h5 = os.path.join(datafolder, "predictions.h5")
+    features_h5 = os.path.join(datafolder, 'features.h5')
+    labels_h5 = os.path.join(datafolder, 'labels.h5')
+
+    with pd.HDFStore(spadl_h5) as spadlstore:
+        games = (
+            spadlstore["games"]
+                .merge(spadlstore["competitions"], how='left')
+                .merge(spadlstore["teams"].add_prefix('home_'), how='left')
+                .merge(spadlstore["teams"].add_prefix('away_'), how='left')
+        )
+        competitions = spadlstore["competitions"]
+        players = spadlstore["players"]
+        teams = spadlstore["teams"]
+        player_games = spadlstore["player_games"]
     #
     # with pd.HDFStore(setbacks_h5) as setbackstore:
     #     player_setbacks = setbackstore["player_setbacks"]
@@ -185,9 +132,9 @@ if __name__ == '__main__':
 
     # games = games[games.competition_name != 'German first division']
     # games = games[games.competition_name == 'World Cup']
-    # games = games[games.competition_name.isin(['World Cup', 'German first division'])]
-    # games = games[games.game_id == 2576324]
-    # games = games[games.competition_name == 'Italian first division']
+    # # games = games[games.competition_name.isin(['World Cup', 'German first division'])]
+    # # games = games[games.game_id == 2576324]
+    # # games = games[games.competition_name == 'Italian first division']
     # all_actions = []
     # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
     #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
@@ -199,14 +146,16 @@ if __name__ == '__main__':
     #             .sort_values(["game_id", "period_id", "action_id"])
     #             .reset_index(drop=True)
     #     )
-    #     # values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
-    #     # all_actions.append(pd.concat([actions, values], axis=1))
-    #     actions = utils.add_total_seconds_to_game(actions)
-    #     actions = utils.add_player_diff(actions, game, all_events)
-    #     actions = utils.add_goal_diff(actions)
-    #     all_actions.append(actions)
+    #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+    #     all_actions.append(pd.concat([actions, values], axis=1))
+    #     # actions = utils.add_total_seconds_to_game(actions)
+    #     # actions = utils.add_player_diff(actions, game, all_events)
+    #     # actions = utils.add_goal_diff(actions)
+    #     # all_actions.append(actions)
+    #     break
     #
     # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    # print(round(all_actions, 4))
     # xp.compute_features_and_labels(games, all_actions, ['German first division'])
     # xp.train_model()
 

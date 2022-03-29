@@ -5,6 +5,8 @@ import socceraction.spadl as spadl
 
 from tqdm import tqdm
 
+import utils
+
 
 def _get_action_aggregates_in_competition(spadl_h5: str, competition_id: int, games: pd.DataFrame, _spadl,
                                           normalize) -> pd.DataFrame:
@@ -97,46 +99,6 @@ def competition_games_players(player_setbacks: pd.DataFrame, team_setbacks: pd.D
         competitions[["competition_id", "competition_name"]], left_index=True, right_on="competition_name").set_index(
         ["competition_id", "competition_name"])
     return aggregates
-
-
-def convert_team_to_player_setback(team_setbacks: pd.DataFrame, player_games: pd.DataFrame, actions: pd.DataFrame,
-                                   players: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
-    players_by_id = players.set_index("player_id", drop=False)
-    player_setbacks = []
-    player_games = player_games.merge(teams[["team_id", "team_name_short"]], left_on="team_id", right_on="team_id")
-
-    for team_setback in tqdm(list(team_setbacks.itertuples()), desc="Converting team to player setbacks:"):
-        actions_in_game = actions[actions.game_id == team_setback.game_id]
-
-        group_by_period = actions_in_game[actions_in_game.period_id != 5].groupby("period_id")
-        last_action_in_period = []
-        for _, period in group_by_period:
-            last_action_in_period.append(round(period.time_seconds.max() / 60))
-        minutes_before_current_period = sum(last_action_in_period[:team_setback.period_id - 1])
-        minute_of_setback = round(team_setback.time_seconds / 60) + minutes_before_current_period
-
-        players_in_game = player_games[
-            (player_games.game_id == team_setback.game_id) & (player_games.team_name_short == team_setback.team)]
-        players_on_field = []
-        for player in players_in_game[players_in_game.is_starter].itertuples():
-            if player.minutes_played > minute_of_setback:
-                players_on_field.append(player)
-
-        for player in players_in_game[~players_in_game.is_starter].itertuples():
-            if (players_in_game.minutes_played.max() - player.minutes_played) < minute_of_setback:
-                players_on_field.append(player)
-
-        for player in players_on_field:
-            player = players_by_id.loc[player.player_id]
-            player_setbacks.append(pd.DataFrame(
-                data={"player": [player.nickname], "player_id": [player.player_id], "birth_date": [player.birth_date],
-                      "player_team": [team_setback.team], "opponent_team": [team_setback.opponent],
-                      "game_id": [team_setback.game_id], "home": [team_setback.home], "setback_type": ["goal conceded"],
-                      "period_id": [team_setback.period_id], "time_seconds": [team_setback.time_seconds],
-                      "score:": [team_setback.score]}))
-
-    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
-    return player_setbacks
 
 
 def players_in_all_games(player_games: pd.DataFrame, game_ids: list) -> list:
@@ -232,8 +194,8 @@ def get_player_aggregates_and_store():
         player_setbacks = setbackstore["player_setbacks"]
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
-        setbackstore['team_as_player_setbacks'] = convert_team_to_player_setback(team_setbacks, player_games, actions,
-                                                                                 players, teams)
+        setbackstore['team_as_player_setbacks'] = utils.convert_team_to_player_setback(team_setbacks, player_games,
+                                                                                       actions, players, teams)
         team_as_player_setbacks = setbackstore['team_as_player_setbacks']
 
     aggregates = get_player_aggregates(player_setbacks, team_as_player_setbacks, team_setbacks_over_matches,
