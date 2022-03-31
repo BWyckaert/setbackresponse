@@ -1,9 +1,9 @@
 import os
+import random
 import warnings
 import pandas as pd
 import socceraction.atomic.vaep.features as afs
 import socceraction.vaep.features as fs
-import utils
 
 from socceraction.atomic.vaep.base import AtomicVAEP
 from socceraction.vaep.base import VAEP
@@ -197,16 +197,19 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     train_features, train_labels = _read_features_and_labels(train_games, features_h5, labels_h5, vaep, _fs)
     test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
+    # random.seed(0)
     vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size, tree_params=tree_params)
     if print_eval:
         _print_evaluation(vaep, test_features, test_labels)
+
+    vaep.score(test_features, test_labels)
 
     if store_eval:
         atomic_str = "yes" if atomic else "no"
         _store_eval(vaep=vaep, test_features=test_features, test_labels=test_labels, training_set=train_competitions,
                     learner=learner, atomic=atomic_str, val_size=validation_size)
 
-    _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
+    # _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
     return vaep
 
 
@@ -222,11 +225,11 @@ def compare_models():
 
     tc = [tc1, tc2, tc3, tc4, tc5, tc6]
 
+    test_competitions = ['Spanish first division', 'Italian first division', 'French first division']
+
     for atomic in [True, False]:
         for learner in learners:
             for train_competitions in tc:
-                test_competitions = list(set(utils.all_competitions) - set(train_competitions))
                 train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=atomic,
                             learner=learner, print_eval=False, store_eval=True, compute_features_labels=False,
                             validation_size=0.25)
-

@@ -25,13 +25,15 @@ def left_to_right(games: pd.DataFrame, actions: pd.DataFrame, _spadl) -> pd.Data
 
 
 def add_total_seconds_to_game(actions: pd.DataFrame) -> pd.DataFrame:
+    if 'total_seconds' in actions.columns:
+        return actions
     group_by_period = actions.groupby("period_id")
     last_action_in_period = []
     for _, period in group_by_period:
         last_action_in_period.append(period.time_seconds.max())
 
     actions['total_seconds'] = actions.apply(
-        lambda x: x['time_seconds'] + sum(last_action_in_period[: x['period_id'] - 1]), axis=1)
+        lambda x: x['time_seconds'] + sum(last_action_in_period[: int(x['period_id']) - 1]), axis=1)
 
     return actions
 
@@ -271,9 +273,7 @@ teams_mapping = {
     'Ireland': 'Republic of Ireland',
     'South Korea': 'Korea Republic'}
 
-column_order = ['0 to 5', '5 to 10', '10 to 15', '15 to 20', '20 to 25', '25 to 30', '30 to 35', '35 to 40', '40 to 45',
-                '45 to 50', '50 to 55', '55 to 60', '60 to 65', '65 to 70', '70 to 75', '75 to 80', '80 to 85',
-                '85 to 90', '90 to 95', '95 to 100', '100 to 105', '105 to 110', '110 to 115', '115 to 120',
-                '120 to 125', '125 to 130', '130 to 135']
+column_order = ['0 to 10', '10 to 20', '20 to 30', '30 to 40', '40 to 50', '50 to 60', '60 to 70', '70 to 80',
+                '80 to 90', '90+']
 
 wp = {'1H': 1, '2H': 2, 'E1': 3, 'E2': 4, 'P': 5}

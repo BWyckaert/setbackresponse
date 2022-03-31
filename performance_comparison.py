@@ -7,25 +7,25 @@ import socceraction.spadl as spadl
 import utils
 
 from tqdm import tqdm
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 
 def compare(setback: pd.Series, a_actions: pd.DataFrame, d_actions: pd.DataFrame, player_game: pd.Series,
             game_duration: int, consider_goals=True) -> pd.DataFrame:
-    # Only consider actions where player of setback is on field
-    a_actions = get_player_on_field_actions(a_actions, player_game, game_duration)
-    d_actions = get_player_on_field_actions(d_actions, player_game, game_duration)
-
-    # Get the action that is a seback
+    # Get the action that is a setback
     a_setback_action = a_actions[(a_actions['period_id'] == setback.period_id) &
                                  (a_actions['time_seconds'] == setback.time_seconds)].iloc[0]
+
+    # Only consider actions where player of setback is on field
+    a_actions = get_player_on_field_actions(a_actions, player_game, game_duration, a_setback_action)
+    d_actions = get_player_on_field_actions(d_actions, player_game, game_duration, a_setback_action)
 
     # Get atomic player actions before and after the setback
     a_actions_before, a_actions_after = get_before_after(a_setback_action, a_actions)
 
     # Get vaep-rating before and after the setback
     vaep_before = vaep_aggregates(a_actions_before, a_actions.iloc[0], a_setback_action, consider_goals)
-    vaep_after = vaep_aggregates(a_actions_after, a_setback_action, a_actions.iloc[-1], consider_goals)
+    vaep_after = vaep_aggregates(a_actions_after, a_setback_action, a_actions.iloc[-1], consider_goals, False)
 
     # Get time on the ball before and after the setback
     time_on_ball_before = time_on_ball_aggregates(a_actions_before, a_actions.iloc[0], a_setback_action)
@@ -57,16 +57,19 @@ def compare(setback: pd.Series, a_actions: pd.DataFrame, d_actions: pd.DataFrame
               "minutes_played": data_to_list(minutes_played_before, minutes_played_after)},
         index=["before_setback", "after_setback", "difference", "relative difference"]
     )
-    return comparison
+    return round(comparison, 4)
 
 
-def get_player_on_field_actions(actions: pd.DataFrame, player_game: pd.Series, game_duration: int) -> pd.DataFrame:
+def get_player_on_field_actions(actions: pd.DataFrame, player_game: pd.Series, game_duration: int,
+                                setback: pd.Series) -> pd.DataFrame:
     if player_game.minutes_played == game_duration:
         return actions
+
+    maximum = max(player_game.minutes_played, setback['total_seconds'] / 60)
     if player_game.is_starter:
-        return actions[(actions['total_seconds'] / 60) < player_game.minutes_played]
+        return actions[(actions['total_seconds'] / 60) <= maximum]
     else:
-        return actions[(actions['total_seconds'] / 60) > (game_duration - player_game.minutes_played)]
+        return actions[(actions['total_seconds'] / 60) >= (game_duration - player_game.minutes_played) - 1]
 
 
 def data_to_list(data_before: float, data_after: float) -> List[float]:
@@ -82,17 +85,48 @@ def get_before_after(setback: pd.Series, actions: pd.DataFrame) -> pd.DataFrame:
     return actions_before, actions_after
 
 
-def vaep_aggregates(player_actions: pd.DataFrame, first: pd.Series, last: pd.Series,
-                    consider_goals: bool) -> Tuple[float]:
-    if not consider_goals:
-        goal_actions = ['goal', 'owngoal', 'bad_touch']
-        vaep_action = player_actions[~player_actions['type_name'].isin(goal_actions)][
-            'vaep_value'].mean() if not player_actions.empty else 0
-        vaep_minute = [~player_actions['type_name'].isin(goal_actions)]['vaep_value'].sum() / (
-                (last.total_seconds - first.total_seconds) / 60)
-    else:
-        vaep_action = player_actions['vaep_value'].mean() if not player_actions.empty else 0
-        vaep_minute = player_actions['vaep_value'].sum() / ((last.total_seconds - first.total_seconds) / 60)
+def vaep_aggregates(player_actions: pd.DataFrame, first: pd.Series, last: pd.Series, consider_goals=False,
+                    before=True) -> Tuple[float]:
+    if player_actions.empty:
+        return 0, 0
+    game_rating_progression_h5 = "results/gr_progression.h5"
+    with pd.HDFStore(game_rating_progression_h5) as store:
+        per_action = store["per_action"]
+        per_minute = store["per_minute"]
+        mean_action = per_action['Mean'].mean()
+        mean_minute = per_minute['Mean'].mean()
+        action_scale = per_action['Mean'] / mean_action
+        minute_scale = per_minute['Mean'] / mean_minute
+
+    # if not consider_goals:
+    #     goal_actions = ['goal', 'owngoal', 'bad_touch']
+    #     vaep_action = player_actions[~player_actions['type_name'].isin(goal_actions)][
+    #         'vaep_value'].mean() if not player_actions.empty else 0
+    #     vaep_minute = [~player_actions['type_name'].isin(goal_actions)]['vaep_value'].sum() / (
+    #             (last.total_seconds - first.total_seconds) / 60)
+    # else:
+
+    chunck_size = 10
+    player_actions['time_chunck'] = player_actions.apply(
+        lambda x: (x['total_seconds'] // (chunck_size * 60)) if (x['total_seconds'] < 5400) else -1, axis=1)
+    group_by_time_chunks = player_actions.groupby('time_chunck')
+
+    vaep_action = []
+    vaep_minute = []
+    for index, time_chunk in group_by_time_chunks:
+        if not time_chunk.empty:
+            vaep_action.append(time_chunk['vaep_value'].mean() / action_scale.iloc[int(index)])
+
+        if int(index) == -1:
+            time_comp = first.total_seconds if (not before) else 90
+            vaep_minute.append(
+                (time_chunk['vaep_value'].sum() / ((last.total_seconds / 60) - time_comp)) / minute_scale.iloc[
+                    int(index)])
+        else:
+            vaep_minute.append((time_chunk['vaep_value'].sum() / chunck_size) / minute_scale.iloc[int(index)])
+
+    vaep_action = stat.mean(vaep_action) if vaep_action else 0
+    vaep_minute = stat.mean(vaep_minute)
 
     return vaep_action, vaep_minute
 
@@ -168,13 +202,24 @@ def compare_ingame_setbacks():
         games = atomicstore["games"]
         player_games = atomicstore["player_games"]
 
-    games = games[games['competition_id'] == 524]
+    # Player_id's of players with more than 900 minutes played
+    player_ids = []
+    grouped_by_player_id = player_games.groupby('player_id')
+    for player_id, p_games in grouped_by_player_id:
+        if p_games['minutes_played'].sum() > 900:
+            player_ids.append(player_id)
+
+    games = games[games['competition_id'] != 426]
+    # games = games[games['competition_id'] == 524]
 
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore["player_setbacks"]
         team_as_player_setbacks = setbackstore['team_as_player_setbacks']
 
-    player_setbacks = pd.concat([player_setbacks, team_as_player_setbacks]).reset_index(drop=True)
+    player_setbacks = pd.concat([player_setbacks, team_as_player_setbacks])
+    player_setbacks = player_setbacks[player_setbacks['player_id'].isin(player_ids)]
+    player_setbacks = player_setbacks[player_setbacks['game_id'].isin(games['game_id'].tolist())].reset_index(drop=True)
+    player_setbacks = player_setbacks[player_setbacks['setback_type'] != "goal conceded"]
 
     a_actions = []
     d_actions = []
@@ -202,12 +247,29 @@ def compare_ingame_setbacks():
 
 
 def get_average_response():
+    atomic_h5 = os.path.join("atomic_data", "spadl.h5")
+    with pd.HDFStore(atomic_h5) as atomicstore:
+        games = atomicstore["games"]
+        player_games = atomicstore["player_games"]
+
+    games = games[games['competition_id'] != 426]
+
+    # Player_id's of players with more than 900 minutes played
+    player_ids = []
+    grouped_by_player_id = player_games.groupby('player_id')
+    for player_id, p_games in grouped_by_player_id:
+        if p_games['minutes_played'].sum() > 900:
+            player_ids.append(player_id)
+
     setbacks_h5 = "default_data/setbacks.h5"
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore["player_setbacks"]
         team_as_player_setbacks = setbackstore['team_as_player_setbacks']
 
-    player_setbacks = pd.concat([player_setbacks, team_as_player_setbacks]).reset_index(drop=True)
+    player_setbacks = pd.concat([player_setbacks, team_as_player_setbacks])
+    player_setbacks = player_setbacks[player_setbacks['player_id'].isin(player_ids)]
+    player_setbacks = player_setbacks[player_setbacks['game_id'].isin(games['game_id'].tolist())].reset_index(drop=True)
+    player_setbacks = player_setbacks[player_setbacks['setback_type'] != "goal conceded"]
 
     responses: Dict[Tuple, List[pd.DataFrame]] = {}
     compstore_h5 = "results/comparisons.h5"
@@ -215,18 +277,45 @@ def get_average_response():
         for index, setback in player_setbacks.iterrows():
             setback_response = compstore["ingame_comp_{}".format(index)]
             key = (setback.player_id, setback.setback_type)
-            if key in responses:
-                responses[key].append(setback_response)
-            else:
-                responses[key] = [setback_response]
+            # Only consider setbacks with more than 10 minutes played before and after
+            if (setback_response.at['before_setback', 'minutes_played'] >= 10) and (
+                    setback_response.at['after_setback', 'minutes_played'] >= 10):
+                if key in responses:
+                    responses[key].append(setback_response)
+                else:
+                    responses[key] = [setback_response]
 
-    avg_responses: Dict[Tuple, List[pd.DataFrame]] = {}
-    for key in responses.keys():
-        response = pd.concat(responses[key])
-        grouped_by_index = response.groupby(response.index)
-        mean = grouped_by_index.mean()
-        std = grouped_by_index.std()
-        avg_responses[key] = [mean, std]
+    avg_response_h5 = "results/avg_response.h5"
+    with pd.HDFStore(avg_response_h5) as store:
+        for key in responses.keys():
+            number = len(responses[key])
+            response = pd.concat(responses[key])
+            grouped_by_index = response.groupby(response.index, sort=False)
+            mean = grouped_by_index.mean()
+            mean.loc['relative difference'] = (mean.loc['after_setback'] - mean.loc['before_setback']) / mean.loc[
+                'before_setback']
+            new_key = "{}: {} ({})".format(key[0], key[1], number)
+            store[new_key] = mean
 
-    with open("results/avg_responses.json", "w") as f:
-        json.dump(avg_responses, f)
+
+def compare_for_setback(setback_type: str, player_id: Optional = None):
+    avg_responses = {}
+    avg_response_h5 = "results/avg_response.h5"
+    with pd.HDFStore(avg_response_h5) as store:
+        for key in store.keys():
+            number = int(key.split("(")[1][:-1])
+            if setback_type in key and number >= 5:
+                if player_id is not None:
+                    if str(player_id) in key:
+                        avg_responses[key] = store[key]
+                else:
+                    avg_responses[key] = store[key]
+
+    avg_responses = sorted(avg_responses.items(), key=lambda x: x[1].at['difference', 'avg_risk'], reverse=False)
+
+    for response in avg_responses[:10]:
+        print(response[0])
+        print()
+        print(response[1])
+        print()
+        print()

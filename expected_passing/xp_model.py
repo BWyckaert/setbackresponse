@@ -7,6 +7,8 @@ import numpy as np
 import math
 import xgboost
 import lightgbm
+import sklearn.calibration as cal
+import matplotlib.pyplot as plt
 from sklearn import metrics
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import train_test_split
@@ -193,7 +195,12 @@ def train_model(filters=[], learner="xgboost", store=False):
         store_predictions(learner, X_test, filters)
 
 
-def evaluate(learner, X_test: pd.DataFrame, y_test: pd.DataFrame):
+def evaluate(learner, X_test: pd.DataFrame, y_test: pd.DataFrame, filters):
+    for feature in filters:
+        for column in X_test.columns:
+            if feature in column:
+                X_test = X_test.drop(columns={column})
+
     # Get the model and calculate y_hat and y_prob
     if learner == "xgboost":
         model = xgboost.XGBClassifier()
@@ -248,5 +255,31 @@ def store_predictions(learner, X_test: pd.DataFrame, filters):
         predictionstore["predictions"] = X_test[["exp_accuracy"]]
 
 
+def plot_calibration(X_test: pd.DataFrame, y_test: pd.DataFrame, filters, learner="xgboost"):
+    # Filter unwanted features from the feature set
+    for feature in filters:
+        for column in X_test.columns:
+            if feature in column:
+                X_test = X_test.drop(columns={column})
 
+    # Get model and calculate y_prob
+    if learner == "xgboost":
+        model = xgboost.XGBClassifier()
+        model.load_model("expected_passing/xP_XGBoost.txt")
+        y_prob = model.predict_proba(X_test)[:, 1]
+        y_hat = model.predict(X_test)
+    if learner == "catboost":
+        model = catboost.CatBoostClassifier()
+        model.load_model("expected_passing/xP_CatBoost.txt")
+        y_prob = model.predict_proba(X_test)[:, 1]
+        y_hat = model.predict(X_test)
+    if learner == "lightgbm":
+        model = lightgbm.Booster(model_file="expected_passing/xP_lightgbm.txt")
+        y_prob = model.predict(X_test)
+        y_hat = np.round(y_prob)
+
+    disp = cal.CalibrationDisplay.from_predictions(y_true=y_test, y_prob=y_prob, n_bins=10)
+
+    plt.show()
+    print(metrics.r2_score(y_true=y_test, y_pred=y_hat))
 

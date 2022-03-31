@@ -181,6 +181,8 @@ def get_player_aggregates_and_store():
         players = spadlstore["players"]
         player_games = spadlstore["player_games"]
         games = spadlstore["games"]
+        # No player stats in German competition
+        games = games[games["competition_id"] != 426]
         teams = spadlstore["teams"]
         all_actions = []
         for game_id in tqdm(list(games.game_id), desc="Collecting all actions: "):
