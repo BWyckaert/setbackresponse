@@ -8,7 +8,7 @@ import socceraction.vaep.features as fs
 from socceraction.atomic.vaep.base import AtomicVAEP
 from socceraction.vaep.base import VAEP
 from tqdm import tqdm
-from typing import List
+from typing import List, Dict
 
 warnings.filterwarnings('ignore')
 
@@ -23,11 +23,11 @@ def _compute_features(games: pd.DataFrame, spadl_h5: str, features_h5: str, vaep
     :param spadl_h5: location where the spadl.h5 file is stored
     :param features_h5: location to store the features.h5 file
     """
-    for game in tqdm(list(games.itertuples()), desc=f"Generating and storing features in {features_h5}"):
-        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+    for game in tqdm(list(games.itertuples()), desc="Generating and storing features in {}".format(features_h5)):
+        actions = pd.read_hdf(spadl_h5, 'actions/game_{}'.format(game.game_id))
         actions = actions[actions['period_id'] != 5]
         X = vaep.compute_features(game, actions)
-        X.to_hdf(features_h5, f"game_{game.game_id}")
+        X.to_hdf(features_h5, 'game_{}'.format(game.game_id))
 
 
 def _compute_labels(games: pd.DataFrame, spadl_h5: str, labels_h5: str, vaep: VAEP):
@@ -39,11 +39,11 @@ def _compute_labels(games: pd.DataFrame, spadl_h5: str, labels_h5: str, vaep: VA
     :param spadl_h5: location where the spadl.h5 file is stored
     :param labels_h5: location to store the labels.h5 file
     """
-    for game in tqdm(list(games.itertuples()), desc=f"Computing and storing labels in {labels_h5}"):
-        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+    for game in tqdm(list(games.itertuples()), desc="Computing and storing labels in {}".format(labels_h5)):
+        actions = pd.read_hdf(spadl_h5, 'actions/game_{}'.format(game.game_id))
         actions = actions[actions['period_id'] != 5]
-        Y = vaep.compute_labels(game, actions)
-        Y.to_hdf(labels_h5, f"game_{game.game_id}")
+        y = vaep.compute_labels(game, actions)
+        y.to_hdf(labels_h5, 'game_{}'.format(game.game_id))
 
 
 def _compute_features_and_labels(spadl_h5: str, features_h5: str, labels_h5: str, games: pd.DataFrame, vaep: VAEP):
@@ -59,33 +59,34 @@ def _read_features_and_labels(games: pd.DataFrame, features_h5: str, labels_h5: 
     """
     Reads in features and labels stored in the features.h5 and labels.h5 files.
 
-    :param _fs: package indication (this is very probably bad practice, but it works for now)
+    :param _fs: package indication
     :param vaep: a vaep object
     :param labels_h5: location where the labels.h5 file is stored
     :param features_h5: location where the features.h5 file is stored
     :param games: the games for which features are stored
     :return: a feature dataframe and a label dataframe
     """
-    feature_names = _fs.feature_column_names(vaep.xfns, vaep.nb_prev_actions)
+    feature_column_names = _fs.feature_column_names(vaep.xfns, vaep.nb_prev_actions)
 
-    features = []
+    all_features = []
     for game_id in tqdm(games.game_id, desc="Selecting features"):
-        feature_i = pd.read_hdf(features_h5, f"game_{game_id}")
-        features.append(feature_i[feature_names])
-    features = pd.concat(features).reset_index(drop=True)
+        features = pd.read_hdf(features_h5, 'game_{}'.format(game_id))
+        all_features.append(features[feature_column_names])
+    all_features = pd.concat(all_features).reset_index(drop=True)
 
-    labels_columns = ["scores", "concedes"]
-    labels = []
+    label_column_names = ['scores', 'concedes']
+    all_labels = []
     for game_id in tqdm(games.game_id, desc="Selecting labels"):
-        label_i = pd.read_hdf(labels_h5, f"game_{game_id}")
-        labels.append(label_i[labels_columns])
-    labels = pd.concat(labels).reset_index(drop=True)
-    return features, labels
+        labels = pd.read_hdf(labels_h5, 'game_{}'.format(game_id))
+        all_labels.append(labels[label_column_names])
+    all_labels = pd.concat(all_labels).reset_index(drop=True)
+
+    return all_features, all_labels
 
 
-def _print_evaluation(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.DataFrame):
+def _print_eval(vaep: VAEP, predictions: Dict[str, Dict[str, float]]):
     """
-    Print some evaluation metrics.
+    Print brier and ROC score.
 
     :param vaep: a vaep object
     :param test_features: a dataframe representing the features of the testset
@@ -93,44 +94,53 @@ def _print_evaluation(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.D
     """
     print()
     print()
-    evaluation = vaep.score(test_features, test_labels)
-    for col in evaluation:
-        print(f"### Label: {col} ###")
-        print(f"Brier score loss:  {evaluation[col]['brier']}")
-        print(f"ROC score:  {evaluation[col]['auroc']}")
+    for col in predictions:
+        print("### Label: {} ###".format(col))
+        print("Brier score loss: {}".format(predictions[col]['brier']))
+        print("ROC score: {}".format(predictions[col]['auroc']))
         print()
     print()
 
 
-def _store_eval(vaep: VAEP, test_features: pd.DataFrame, test_labels: pd.DataFrame, training_set: List[str],
+def _store_eval(vaep: VAEP, predictions: Dict[str, Dict[str, float]], training_set: List[str],
                 learner: str, atomic: str, val_size: int):
-    evaluation = vaep.score(test_features, test_labels)
-    with open("results/vaep_tests.txt", "a") as f:
+    """
+    Store brier and ROC score for the given arguments.
+
+    :param vaep: a vaep object
+    :param test_features: a dataframe representing the features of the testset
+    :param test_labels: a dataframe representing the labels of the testset
+    :param training_set: list of the competitions used in the training set
+    :param learner: the learner used to obtain test_labels
+    :param atomic: a boolean indicating whether or not the atomic format was used
+    :param val_size: the size of the validation set
+    """
+    with open('results/vaep_tests.txt', 'a') as f:
         f.write("-------------------------------------------------------------------------------------------------- \n")
         f.write("Atomic: {} \n".format(atomic))
         f.write("Learner: {} \n".format(learner))
         f.write("Training set: {} \n".format(training_set))
         f.write("Validation size: {} \n".format(str(val_size)))
-        for col in evaluation:
+        for col in predictions:
             f.write("\n")
             f.write("### Label: {} ### \n".format(col))
-            f.write("Brier score loss:  {} \n".format(evaluation[col]['brier']))
-            f.write("ROC score:  {} \n".format(evaluation[col]['auroc']))
+            f.write("Brier score loss:  {} \n".format(predictions[col]['brier']))
+            f.write("ROC score:  {} \n".format(predictions[col]['auroc']))
         f.write("\n \n")
 
 
 def _rate_actions(games: pd.DataFrame, spadl_h5: str, vaep: VAEP) -> pd.DataFrame:
     """
-    Returns a dataframe containing the predicted action ratings for all the actions in the given games.
+    Rate all the actions in the given games with the vaep object.
 
     :param games: the games for which the action ratings of the actions should be calculated
     :param spadl_h5: location where the spadl.h5 file is stored
     :param vaep: a vaep object
-    :return:
+    :return: a dataframe containing the predictions of the model
     """
     predictions = []
     for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = pd.read_hdf(spadl_h5, 'actions/game_{}'.format(game.game_id))
         actions = actions[actions['period_id'] != 5]
         rating = vaep.rate(game, actions)
         rating['game_id'] = game.game_id
@@ -149,22 +159,26 @@ def _store_predictions(predictions_h5: str, predictions: pd.DataFrame):
     :param predictions: dataframe containing the prected action ratings for all the actions in the given
            games
     """
-    columns = ["offensive_value", "defensive_value", "vaep_value"]
-    grouped_predictions = predictions.groupby("game_id")
+    column_names = ['offensive_value', 'defensive_value', 'vaep_value']
+    grouped_predictions = predictions.groupby('game_id')
     for game_id, ratings in tqdm(grouped_predictions, desc="Saving predictions per game"):
         ratings = ratings.reset_index(drop=True)
-        ratings[columns].to_hdf(predictions_h5, f"game_{int(game_id)}")
+        ratings[column_names].to_hdf(predictions_h5, 'game_{}'.format(int(game_id)))
 
 
 def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
-                print_eval=False, store_eval=False, compute_features_labels=True, validation_size=0.25, tree_params=None) -> VAEP:
+                print_eval=False, store_eval=False, store_pred=False, compute_features_labels=False,
+                validation_size=0.25, tree_params=None, fit_params=None) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
 
-    :param store_eval:
-    :param validation_size:
-    :param test_competitions:
-    :param train_competitions:
+    :param fit_params: parameters for the learner
+    :param tree_params: parameters for the learner
+    :param store_pred: boolean flag indicating whether or not to store predictions of the model
+    :param store_eval: boolean flag indicating whether or not to store evaluations of the model
+    :param validation_size: the size of the validation set
+    :param test_competitions: the test competitions
+    :param train_competitions: the train competitions
     :param compute_features_labels: boolean flag indicating whether to recompute the features and labels
     :param atomic: boolean flag indicating whether or not the actions should be atomic
     :param learner: the learner to be used
@@ -173,19 +187,21 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     """
     if atomic:
         vaep = AtomicVAEP()
-        datafolder = "atomic_data"
+        datafolder = 'atomic_data'
         _fs = afs
     else:
         vaep = VAEP()
-        datafolder = "default_data"
+        datafolder = 'default_data'
         _fs = fs
 
-    spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    features_h5 = os.path.join(datafolder, "features.h5")
-    labels_h5 = os.path.join(datafolder, "labels.h5")
-    predictions_h5 = os.path.join(datafolder, "predictions.h5")
-    games = pd.read_hdf(spadl_h5, "games")
-    competitions = pd.read_hdf(spadl_h5, "competitions")
+    spadl_h5 = os.path.join(datafolder, 'spadl.h5')
+    features_h5 = os.path.join(datafolder, 'features.h5')
+    labels_h5 = os.path.join(datafolder, 'labels.h5')
+    predictions_h5 = os.path.join(datafolder, 'predictions.h5')
+
+    with pd.HDFStore(spadl_h5) as store:
+        games = store['games']
+        competitions = store['competitions']
     games = games.merge(competitions, how='left')
 
     if compute_features_labels:
@@ -198,18 +214,26 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
     # random.seed(0)
-    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size, tree_params=tree_params)
-    if print_eval:
-        _print_evaluation(vaep, test_features, test_labels)
+    vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size, tree_params=tree_params,
+             fit_params=fit_params)
+
+    if print_eval or store_eval:
+        predictions = vaep.score(test_features, test_labels)
+
+        if print_eval:
+            _print_eval(vaep, predictions)
+
+        if store_eval:
+            atomic_str = 'yes' if atomic else 'no'
+            _store_eval(vaep=vaep, test_features=test_features, test_labels=test_labels,
+                        training_set=train_competitions,
+                        learner=learner, atomic=atomic_str, val_size=validation_size)
 
     vaep.score(test_features, test_labels)
 
-    if store_eval:
-        atomic_str = "yes" if atomic else "no"
-        _store_eval(vaep=vaep, test_features=test_features, test_labels=test_labels, training_set=train_competitions,
-                    learner=learner, atomic=atomic_str, val_size=validation_size)
+    if store_pred:
+        _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
 
-    # _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
     return vaep
 
 
