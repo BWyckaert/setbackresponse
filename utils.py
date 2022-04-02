@@ -219,7 +219,43 @@ all_competitions = [
     'World Cup'
 ]
 
-competition_to_odds = {
+train_competitions = [
+    'German first division'
+]
+
+test_competitions = [
+    'Italian first division',
+    'English first division',
+    'Spanish first division',
+    'French first division',
+    'European Championship',
+    'World Cup'
+]
+
+all_competition_ids = [
+    524,
+    364,
+    795,
+    412,
+    426,
+    102,
+    28
+]
+
+train_competition_ids = [
+    426
+]
+
+test_competition_ids = [
+    524,
+    364,
+    795,
+    412,
+    102,
+    28
+]
+
+competitions_mapping = {
     'Italian first division': 'Italy',
     'English first division': 'England',
     'Spanish first division': 'Spain',

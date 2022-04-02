@@ -10,28 +10,6 @@ from typing import Dict
 from tqdm import tqdm
 
 
-def _select_competitions(competitions: pd.DataFrame) -> pd.DataFrame:
-    """
-    Returns a dataframe containing all selected competitions.
-
-    :param competitions: a dataframe with all available competitions
-    :return: a dataframe containing all selected competitions
-    """
-    # Uncomment all wanted competitions
-    all_competitions = [
-        'Italian first division',
-        'English first division',
-        'Spanish first division',
-        'French first division',
-        'German first division',
-        'European Championship',
-        'World Cup'
-    ]
-    selected_competitions = pd.concat([competitions[competitions.competition_name == competition]
-                                       for competition in all_competitions])
-    return selected_competitions
-
-
 def _get_games_in_competitions(competitions: pd.DataFrame, pwl: PublicWyscoutLoader) -> pd.DataFrame:
     """
     Returns a dataframe containing all games in the given competitions.
@@ -42,33 +20,32 @@ def _get_games_in_competitions(competitions: pd.DataFrame, pwl: PublicWyscoutLoa
     """
 
     games = []
-    root = os.path.join(os.getcwd(), 'wyscout_data')
     for competition in competitions.itertuples():
-        with open(os.path.join(root, utils.index.at[competition.competition_id, 'db_matches']), 'rt',
+        with open(os.path.join('wyscout_data', utils.index.at[competition.competition_id, 'db_matches']), 'rt',
                   encoding='utf-8') as wm:
             wyscout_matches = pd.DataFrame(json.load(wm))
-        wyscout_matches.rename(columns={'wyId': 'game_id'}, inplace=True)
-        wyscout_matches = wyscout_matches[['game_id', 'label']]
+        wyscout_matches = wyscout_matches.rename(columns={'wyId': 'game_id'})[['game_id', 'label']]
         games_in_competition = pwl.games(competition.competition_id, competition.season_id)
         games_in_competition = games_in_competition.join(wyscout_matches.set_index('game_id'), on='game_id')
         games.append(games_in_competition)
 
-    return pd.concat(games).reset_index(drop=True)
+    games = pd.concat(games).reset_index(drop=True)
+
+    return games
 
 
 def _add_position_to_players(players: pd.DataFrame) -> pd.DataFrame:
     """
-    Adds a new column to the players dataframe denoting the players position
+    Adds a new column to the players dataframe denoting the players position.
 
     :param players: the players dataframe
     :return: the given dataframe with an added position column
     """
-    root = os.path.join(os.getcwd(), 'wyscout_data')
-    with open(os.path.join(root, "players.json"), 'rt', encoding='utf-8') as wm:
+    with open('wyscout_data/players.json', 'rt', encoding='utf-8') as wm:
         wyscout_players = pd.DataFrame(json.load(wm)).rename(columns={'wyId': 'player_id'})
-    players = players.join(wyscout_players[["player_id", "role"]].set_index('player_id'), on='player_id')
-    players["role"] = players.apply(lambda x: x.role["name"], axis=1)
-    players.rename(columns={'role': 'position'}, inplace=True)
+    players = players.join(wyscout_players[['player_id', 'role']].set_index('player_id'), on='player_id')
+    players['role'] = players.apply(lambda x: x.role['name'], axis=1)
+    players = players.rename(columns={'role': 'position'})
 
     return players
 
@@ -83,7 +60,7 @@ def _load_and_convert_data(games: pd.DataFrame, pwl: PublicWyscoutLoader, atomic
     :param games: a dataframe of games for which the teams, players and actions should be returned
     :return: a dataframe containing all teams participating in the given games,
              a dataframe containing all players participating in the given games and
-             a dictionary mapping the game_id's of the given games to their respective dataframe of actions (in (atomic)
+             a dictionary mapping the game_id's of the given games to their respective dataframe of actions in (atomic)
              spadl format
     """
     teams, players = [], []
@@ -117,43 +94,41 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
     if not os.path.exists(datafolder):
         os.mkdir(datafolder)
 
-    spadl_h5 = os.path.join(datafolder, "spadl.h5")
+    spadl_h5 = os.path.join(datafolder, 'spadl.h5')
 
     with pd.HDFStore(spadl_h5) as spadlstore:
-        # for key in spadlstore.keys():
-        #     if "actions/game_" in key:
-        #         del spadlstore[key]
-        spadlstore["competitions"] = competitions
-        spadlstore["games"] = games.reset_index(drop=True)
-        spadlstore["teams"] = teams.reset_index(drop=True)
-        spadlstore["players"] = players[
+        spadlstore['competitions'] = competitions
+        spadlstore['games'] = games.reset_index(drop=True)
+        spadlstore['teams'] = teams.reset_index(drop=True)
+        spadlstore['players'] = players[
             ['player_id', 'player_name', 'nickname', 'birth_date', 'position']].drop_duplicates(
             subset='player_id').reset_index(drop=True)
-        spadlstore["player_games"] = players[
+        spadlstore['player_games'] = players[
             ['player_id', 'game_id', 'team_id', 'is_starter', 'minutes_played']].reset_index(drop=True)
         for game_id in actions.keys():
-            spadlstore[f"actions/game_{game_id}"] = actions[game_id]
+            spadlstore[f'actions/game_{game_id}'] = actions[game_id]
 
 
-def load_and_convert_wyscout_data(atomic=True, download=False):
+def load_and_convert_wyscout_data(atomic=True, download=False, competitions=utils.all_competitions):
     """
     Downloads public Wyscout dataset if necessary, converts it to spadl format and writes data corresponding to the
     requested competitions to an h5 file.
 
+    :param competitions: the names of the competitions for which the data must be loaded
     :param atomic: boolean flag indicating whether or not the actions should be atomic
     :param download: boolean flag indicating whether or not the Wyscout dataset should be (re)downloaded
     """
     if atomic:
-        datafolder = "atomic_data"
+        datafolder = 'atomic_data'
     else:
-        datafolder = "default_data"
+        datafolder = 'default_data'
 
     if download:
         print("Downloading public Wyscout dataset...")
 
     pwl = PublicWyscoutLoader(download=download)
-    competitions = pwl.competitions()
-    selected_competitions = _select_competitions(competitions)
+    all_competitions = pwl.competitions()
+    selected_competitions = all_competitions[all_competitions['competition_name'].isin(competitions)]
     games = _get_games_in_competitions(selected_competitions, pwl)
     teams, players, actions = _load_and_convert_data(games, pwl, atomic)
     _store_data(selected_competitions, games, teams, players, actions, datafolder)

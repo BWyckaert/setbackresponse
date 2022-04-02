@@ -439,7 +439,7 @@ def convert_to_fair_odds(games_odds: pd.DataFrame) -> pd.DataFrame:
 
 def add_odds_to_games(games: pd.DataFrame) -> pd.DataFrame:
     odds = []
-    for competition in list(utils.competition_to_odds.values()):
+    for competition in list(utils.competitions_mapping.values()):
         odds.append(pd.read_csv('betting_data/odds_{}.csv'.format(competition)))
     odds = pd.concat(odds).reset_index(drop=True)
     odds['Date'] = pd.to_datetime(odds['Date'], yearfirst=True, infer_datetime_format=True).dt.date

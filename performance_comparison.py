@@ -304,14 +304,17 @@ def compare_for_setback(setback_type: str, player_id: Optional = None):
     with pd.HDFStore(avg_response_h5) as store:
         for key in store.keys():
             number = int(key.split("(")[1][:-1])
-            if setback_type in key and number >= 5:
+            if setback_type in key and number >= 3:
                 if player_id is not None:
                     if str(player_id) in key:
                         avg_responses[key] = store[key]
                 else:
                     avg_responses[key] = store[key]
 
-    avg_responses = sorted(avg_responses.items(), key=lambda x: x[1].at['difference', 'avg_risk'], reverse=False)
+    print(len(avg_responses))
+    # avg_responses = sorted(avg_responses.items(), key=lambda x: x[1].at['difference', 'vaep_per_minute'], reverse=False)
+    avg_responses = sorted(avg_responses.items(), key=lambda x: abs(x[1].at['difference', 'vaep_per_minute']), reverse=False)
+
 
     for response in avg_responses[:10]:
         print(response[0])
