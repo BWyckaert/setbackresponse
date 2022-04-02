@@ -65,7 +65,7 @@ def _load_and_convert_data(games: pd.DataFrame, pwl: PublicWyscoutLoader, atomic
     """
     teams, players = [], []
     actions = {}
-    for game in tqdm(list(games.itertuples()), desc="Loading and converting game data"):
+    for game in tqdm(list(games.itertuples()), desc="Loading and converting game data: "):
         teams.append(pwl.teams(game.game_id))
         players.append(pwl.players(game.game_id))
         events = pwl.events(game.game_id)
@@ -106,7 +106,7 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
         spadlstore['player_games'] = players[
             ['player_id', 'game_id', 'team_id', 'is_starter', 'minutes_played']].reset_index(drop=True)
         for game_id in actions.keys():
-            spadlstore[f'actions/game_{game_id}'] = actions[game_id]
+            spadlstore['actions/game_{}'.format(game_id)] = actions[game_id]
 
 
 def load_and_convert_wyscout_data(atomic=True, download=False, competitions=utils.all_competitions):
