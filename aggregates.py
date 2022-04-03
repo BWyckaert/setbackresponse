@@ -6,6 +6,7 @@ import socceraction.spadl as spadl
 from tqdm import tqdm
 
 import utils
+import aggregates as aggr
 
 
 def _get_action_aggregates_in_competition(spadl_h5: str, competition_id: int, games: pd.DataFrame, _spadl,
@@ -105,7 +106,7 @@ def players_in_all_games(player_games: pd.DataFrame, game_ids: list) -> list:
     games = player_games[player_games['game_id'].isin(game_ids)]
     nb_games = games['player_id'].value_counts()
     all_games_played = nb_games[nb_games > int(len(game_ids) / 2)]
-    return all_games_played.index.tolist()
+    return all_games_played.competition_index.tolist()
 
 
 def extend_with_playerlist(team_setbacks_over_matches: pd.DataFrame, player_games: pd.DataFrame) -> pd.DataFrame:
@@ -196,24 +197,25 @@ def get_player_aggregates_and_store():
         player_setbacks = setbackstore["player_setbacks"]
         team_setbacks = setbackstore["teams_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
-        setbackstore['team_as_player_setbacks'] = utils.convert_team_to_player_setback(team_setbacks, player_games,
+        setbackstore['team_as_player_setbacks'] = aggr.convert_team_to_player_setbacks(team_setbacks, player_games,
                                                                                        actions, players, teams)
         team_as_player_setbacks = setbackstore['team_as_player_setbacks']
 
-    aggregates = get_player_aggregates(player_setbacks, team_as_player_setbacks, team_setbacks_over_matches,
-                                       player_games, players, all_actions, normalize=False)
-    aggregates_normalized = get_player_aggregates(player_setbacks, team_as_player_setbacks, team_setbacks_over_matches,
-                                                  player_games, players, all_actions, normalize=True)
+    player_aggregates = get_player_aggregates(player_setbacks, team_as_player_setbacks, team_setbacks_over_matches,
+                                              player_games, players, all_actions, normalize=False)
+    player_aggregates_normalized = get_player_aggregates(player_setbacks, team_as_player_setbacks,
+                                                         team_setbacks_over_matches, player_games, players,
+                                                         all_actions, normalize=True)
 
     with pd.ExcelWriter("results/player_aggregates.xlsx") as writer:
-        aggregates.to_excel(writer, "Player")
-        aggregates_normalized.to_excel(writer, "Player_Norm")
+        player_aggregates.to_excel(writer, "Player")
+        player_aggregates_normalized.to_excel(writer, "Player_Norm")
 
     datafolder = "aggregates"
     aggregates_h5 = os.path.join(datafolder, "aggregates.h5")
-    with pd.HDFStore(aggregates_h5) as aggregatesstore:
-        aggregatesstore["player_agg"] = aggregates
-        aggregatesstore["player_agg_norm"] = aggregates_normalized
+    with pd.HDFStore(aggregates_h5) as store:
+        store["player_agg"] = player_aggregates
+        store["player_agg_norm"] = player_aggregates_normalized
 
 
 def get_competition_aggregates_and_store():

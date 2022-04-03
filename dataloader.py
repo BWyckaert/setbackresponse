@@ -21,8 +21,8 @@ def _get_games_in_competitions(competitions: pd.DataFrame, pwl: PublicWyscoutLoa
 
     games = []
     for competition in competitions.itertuples():
-        with open(os.path.join('wyscout_data', utils.index.at[competition.competition_id, 'db_matches']), 'rt',
-                  encoding='utf-8') as wm:
+        with open(os.path.join('wyscout_data', utils.competition_index.at[competition.competition_id, 'db_matches']),
+                  'rt', encoding='utf-8') as wm:
             wyscout_matches = pd.DataFrame(json.load(wm))
         wyscout_matches = wyscout_matches.rename(columns={'wyId': 'game_id'})[['game_id', 'label']]
         games_in_competition = pwl.games(competition.competition_id, competition.season_id)
@@ -109,7 +109,7 @@ def _store_data(competitions: pd.DataFrame, games: pd.DataFrame, teams: pd.DataF
             spadlstore['actions/game_{}'.format(game_id)] = actions[game_id]
 
 
-def load_and_convert_wyscout_data(atomic=True, download=False, competitions=utils.all_competitions):
+def load_and_convert_wyscout_data(atomic=False, download=False, competitions=utils.all_competitions):
     """
     Downloads public Wyscout dataset if necessary, converts it to spadl format and writes data corresponding to the
     requested competitions to an h5 file.
@@ -132,3 +132,11 @@ def load_and_convert_wyscout_data(atomic=True, download=False, competitions=util
     games = _get_games_in_competitions(selected_competitions, pwl)
     teams, players, actions = _load_and_convert_data(games, pwl, atomic)
     _store_data(selected_competitions, games, teams, players, actions, datafolder)
+
+
+def main():
+    load_and_convert_wyscout_data()
+
+
+if __name__ == '__main__':
+    main()

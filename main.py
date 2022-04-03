@@ -15,7 +15,7 @@ import performance_comparison as pc
 from tqdm import tqdm
 
 import utils
-from data_loader import load_and_convert_wyscout_data
+from dataloader import load_and_convert_wyscout_data
 from aggregates import get_competition_aggregates_and_store
 from aggregates import competition_games_players
 from setbacks import get_setbacks
@@ -82,12 +82,7 @@ if __name__ == '__main__':
     # print(rp_per_action)
     # print(rp_per_minute)
     #
-    # train_competitions = ['German first division']
-    # test_competitions = list(set(utils.all_competitions) - set(train_competitions))
-    #
-    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
-    #                 learner="xgboost", print_eval=False, store_eval=False, compute_features_labels=False,
-    #                 validation_size=0.25, tree_params=dict(n_estimators=100, max_depth=3))
+
 
     # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
     #                 learner="lightgbm", print_eval=True, store_eval=False, compute_features_labels=False,

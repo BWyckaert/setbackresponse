@@ -165,7 +165,7 @@ def get_missed_shots(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -
     # Select all shots that are tagged as an opportunity (id: 201) and inaccurate (id: 1802) by Wyscout annotators
     for competition_id, ms_by_competition in shots_grouped_by_competition_id:
         # Open Wyscout events of the competition represented by competition_id
-        with open(os.path.join(root, utils.index.at[competition_id, 'db_events']), 'rt', encoding='utf-8') as we:
+        with open(os.path.join(root, utils.competition_index.at[competition_id, 'db_events']), 'rt', encoding='utf-8') as we:
             events = pd.DataFrame(json.load(we))
         ms_by_competition = ms_by_competition.merge(events[['id', 'tags']], left_on='original_event_id', right_on='id')
         # Reformat tags from list of dicts to list
@@ -262,7 +262,7 @@ def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) 
     return gc_setbacks
 
 
-def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+def get_foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
     print("Finding fouls leading to goals... ")
     print()
 
@@ -305,7 +305,7 @@ def foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
     return fltg_setbacks
 
 
-def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+def get_bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
     print("Finding bad pass leading to goal... ")
     print()
 
@@ -352,7 +352,7 @@ def bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
     return bpltg_setbacks
 
 
-def bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
     print("Finding bad consecutive passes... ")
     print()
 
@@ -456,7 +456,7 @@ def add_odds_to_games(games: pd.DataFrame) -> pd.DataFrame:
     return games_odds
 
 
-def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
+def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
     print("Finding consecutive losses... ")
     print()
 
@@ -499,6 +499,66 @@ def consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
     return cl_setbacks
 
 
+def convert_team_to_player_setbacks(team_setbacks: pd.DataFrame, player_games: pd.DataFrame, actions: pd.DataFrame,
+                                    players: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converts in game teams setbacks to individual player setbacks.
+
+    :param team_setbacks: a dataframe of team setbacks
+    :param player_games: a dataframe of player games
+    :param actions: a dataframe of actions
+    :param players: a dataframe of players
+    :param teams: a dataframe of teams
+    :return: a dataframe of player setbacks from the team setbacks
+    """
+    players_by_id = players.set_index('player_id', drop=True)
+    player_setbacks = []
+    player_games = player_games.merge(teams[['team_id', 'team_name_short']], on='team_id')
+
+    # For each team setback, find which players were on the field at the time of the setback and create individual
+    # setback for each of those players
+    for team_setback in tqdm(list(team_setbacks.itertuples()), desc="Converting team to player setbacks:"):
+        actions_in_game = actions[actions.game_id == team_setback.game_id]
+
+        # Get the minute of the setback in the same way the substitution minute of spadl is calculated
+        group_by_period = actions_in_game.groupby('period_id')
+        periods_duration = []
+        for _, period in group_by_period:
+            periods_duration.append(round(period.time_seconds.max() / 60))
+        minutes_before_current_period = sum(periods_duration[:team_setback.period_id - 1])
+        minute_of_setback = round(team_setback.time_seconds / 60) + minutes_before_current_period
+
+        # Get all the players in the game of the setback
+        players_in_game = player_games[
+            (player_games.game_id == team_setback.game_id) & (player_games.team_name_short == team_setback.team)]
+
+        players_on_field = []
+
+        # Get the players on the field at the time of the setback who were a starter
+        for player in players_in_game[players_in_game.is_starter].itertuples():
+            if player.minutes_played > minute_of_setback:
+                players_on_field.append(player)
+
+        # Get the players on the field at the time of the setback who were a substitute
+        for player in players_in_game[~players_in_game.is_starter].itertuples():
+            if (players_in_game.minutes_played.max() - player.minutes_played) < minute_of_setback:
+                players_on_field.append(player)
+
+        # Construct a player setback for every player on the field at the time of the team setback
+        for player in players_on_field:
+            player = players_by_id.loc[player.player_id]
+            player_setbacks.append(pd.DataFrame(
+                data={'player': [player.nickname], 'player_id': [player.player_id], 'birth_date': [player.birth_date],
+                      'player_team': [team_setback.team], 'opponent_team': [team_setback.opponent],
+                      'game_id': [team_setback.game_id], 'home': [team_setback.home], 'setback_type': ['goal conceded'],
+                      'period_id': [team_setback.period_id], 'time_seconds': [team_setback.time_seconds],
+                      'score:': [team_setback.score]}))
+
+    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
+
+    return player_setbacks
+
+
 def get_setbacks(competitions: List[str], atomic=False) -> tuple:
     if atomic:
         _spadl = aspadl
@@ -537,15 +597,15 @@ def get_setbacks(competitions: List[str], atomic=False) -> tuple:
     all_actions = utils.left_to_right(games, all_actions, _spadl)
 
     player_setbacks = [get_missed_penalties(games, all_actions, atomic), get_missed_shots(games, all_actions, atomic),
-                       foul_leading_to_goal(games, all_actions, atomic),
-                       bad_pass_leading_to_goal(games, all_actions, atomic),
-                       bad_consecutive_passes(games, all_actions, atomic)]
+                       get_foul_leading_to_goal(games, all_actions, atomic),
+                       get_bad_pass_leading_to_goal(games, all_actions, atomic),
+                       get_bad_consecutive_passes(games, all_actions, atomic)]
     player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
 
     team_setbacks = [get_goal_conceded(games, all_actions, atomic)]
     team_setbacks = pd.concat(team_setbacks).reset_index(drop=True)
 
-    team_setbacks_over_matches = consecutive_losses(games)
+    team_setbacks_over_matches = get_consecutive_losses(games)
 
     setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
     with pd.HDFStore(setbacks_h5) as setbackstore:

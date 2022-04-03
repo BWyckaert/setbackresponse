@@ -44,7 +44,7 @@ def add_features(passes: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
     all_passes = []
     for competition_id, passes in passes_grouped_by_competition_id:
         # Get wyscout events
-        with open(os.path.join("wyscout_data", utils.index.at[competition_id, 'db_events']), 'rt',
+        with open(os.path.join("wyscout_data", utils.competition_index.at[competition_id, 'db_events']), 'rt',
                   encoding='utf-8') as we:
             events = pd.DataFrame(json.load(we))
 

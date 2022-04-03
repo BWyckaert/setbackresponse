@@ -1,6 +1,6 @@
 import json
 import os
-from typing import cast, Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List
 
 import pandas as pd
 
@@ -9,29 +9,42 @@ from tqdm import tqdm
 
 def left_to_right(games: pd.DataFrame, actions: pd.DataFrame, _spadl) -> pd.DataFrame:
     """
-    Changes the given actions such that all actions are performed as if the player plays from left to right
+    Changes the given actions such that all actions are performed as if the player plays from left to right.
 
     :param games: a dataframe with all the games from which the actions are taken
     :param actions: a dataframe with all the actions for which the direction of play should be changed
     :param _spadl:
-    :return: a dataframe containing the same actions as in actions, but with the direction of play altered such that
-    all actions are performed as if the player plays from left to right
+    :return: a dataframe of actions where all actions are performed as if the player plays from left to right
     """
-    return pd.concat(
-        [
-            _spadl.play_left_to_right(actions[actions.game_id == game.game_id], game.home_team_id) for game in
-            tqdm(list(games.itertuples()), desc="Converting direction of play: ")
-        ]).reset_index(drop=True)
+    ltr_actions = []
+    for game in tqdm(list(games.itertuples()), desc="Converting direction of play: "):
+        ltr_actions.append(_spadl.play_left_to_right(actions[actions.game_id == game.game_id], game.home_team_id))
+
+    ltr_actions = pd.concat(ltr_actions).reset_index(drop=True)
+
+    return ltr_actions
 
 
 def add_total_seconds_to_game(actions: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a total seconds column to the actions if it doesn't exist already.
+
+    :param actions: a dataframe of actions
+    :return: a dataframe of actions with an added column containing the total seconds
+    """
+    # No need to add total_seconds column if it exists already
     if 'total_seconds' in actions.columns:
         return actions
-    group_by_period = actions.groupby("period_id")
+
+    # Find the timestamp of the last action in each period
+    # Fifth period actions should already be removed at this point
+    group_by_period = actions.groupby('period_id')
     last_action_in_period = []
     for _, period in group_by_period:
         last_action_in_period.append(period.time_seconds.max())
 
+    # Define total seconds as the timestamp of the action in the current period plus the duration of all previous
+    # periods combined
     actions['total_seconds'] = actions.apply(
         lambda x: x['time_seconds'] + sum(last_action_in_period[: int(x['period_id']) - 1]), axis=1)
 
@@ -39,23 +52,56 @@ def add_total_seconds_to_game(actions: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_total_seconds(actions: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a total seconds column the actions in the given games if it doesn't exist already.
+
+    :param actions: a dataframe of actions
+    :param games: a dataframe of games
+    :return: a dataframe of actions with an added column containing the total seconds
+    """
+    # No need to add total_seconds column if it exists already
+    if 'total_seconds' in actions.columns:
+        return actions
+
+    # Add a total_seconds column to all action in each of the given games
     extended_actions = []
     for game_id in tqdm(list(games.game_id), desc="Adding total_seconds to actions: "):
         extended_actions.append(add_total_seconds_to_game(actions[actions['game_id'] == game_id]))
 
-    return pd.concat(extended_actions).reset_index(drop=True)
+    extended_actions = pd.concat(extended_actions).reset_index(drop=True)
+
+    return extended_actions
 
 
 def add_goal_diff_atomic(actions: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a goal difference column to atomic actions.
+
+    :param actions: a dataframe of actions
+    :return: a dataframe of actions with an added column denoting the goal difference at the time of the actions
+    """
+    # Get all actions that result in a goal
     goallike = ['goal', 'owngoal']
     goal_actions = actions[actions['type_name'].isin(goallike)]
+
+    # Initialise the score difference to 0 for all actions
     actions['score_diff'] = 0
 
+    # For each action resulting in a goal, increase all consequent actions of the scoring team with 1 and decrease all
+    # consequent actions of the conceding team with 1
     for index, goal in goal_actions.iterrows():
+
+        # Check if the action resulting in a goal is not the last action in the game
         if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
+
+            # If the action is a goal, increase the score difference for all consequent actions of team of player
+            # performing the action and decrease the score difference for actions of the opponent
             if goal['type_name'] == 'goal':
                 actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
                     lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
+
+            # If the action is a goal, decrease the score difference for all consequent actions of team of player
+            # performing the action and increase the score difference for actions of the opponent
             if goal['type_name'] == 'owngoal':
                 actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
                     lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
@@ -64,16 +110,35 @@ def add_goal_diff_atomic(actions: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
-    shotlike = ["shot", "shot_penalty", "shot_freekick"]
-    goal_actions = actions[(actions.type_name.isin(shotlike) & (actions.result_name == "success")) | (
-            actions.result_name == "owngoal")]
+    """
+    Add a goal difference column to non-atomic actions.
+
+    :param actions: a dataframe of actions
+    :return: a dataframe of actions with an added column denoting the goal difference at the time of the actions
+    """
+    # Get all actions that result in a goal
+    shotlike = ['shot', 'shot_penalty', 'shot_freekick']
+    goal_actions = actions[(actions.type_name.isin(shotlike) & (actions.result_name == 'success')) | (
+            actions.result_name == 'owngoal')]
+
+    # Initialise the score difference to 0 for all actions
     actions['score_diff'] = 0
 
+    # For each action resulting in a goal, increase all consequent actions of the scoring team with 1 and decrease all
+    # consequent actions of the conceding team with 1
     for index, goal in goal_actions.iterrows():
+
+        # Check if the action resulting in a goal is not the last action in the game
         if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
+
+            # If the action is a goal, increase the score difference for all consequent actions of team of player
+            # performing the action and decrease the score difference for actions of the opponent
             if goal['result_name'] == 'success':
                 actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
                     lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
+
+            # If the action is a goal, decrease the score difference for all consequent actions of team of player
+            # performing the action and increase the score difference for actions of the opponent
             if goal['result_name'] == 'owngoal':
                 actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
                     lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
@@ -82,10 +147,20 @@ def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_player_diff(actions: pd.DataFrame, game: pd.Series, events: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a player difference column to actions in the given game.
+
+    :param actions: a dataframe of actions
+    :param game: a series of a game
+    :param events: a dataframe of wyscout events
+    :return: a dataframe of actions with an added column denoting the player difference at the time of the action
+    """
+    # Get all wyscout events in the game resulting in a red card (1701) or second yellow (1703)
     match_events = events[events['matchId'] == game.game_id]
     match_events['tags'] = match_events.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
     red_cards = match_events[pd.DataFrame(match_events.tags.tolist()).isin([1701, 1703]).any(axis=1).values]
 
+    # Get the red cards by team id
     red_cards_both_teams: Dict[int, List[Tuple]] = {}
     for red_card in red_cards.itertuples():
         if red_card[0] in red_cards_both_teams:
@@ -93,7 +168,11 @@ def add_player_diff(actions: pd.DataFrame, game: pd.Series, events: pd.DataFrame
         else:
             red_cards_both_teams[red_card.teamId] = [(red_card.matchPeriod, red_card.eventSec)]
 
+    # Initialise player difference to 0 for all actions
     actions['player_diff'] = 0
+
+    # For all red cards (if there are any), decrease player difference for all consequent actions of team of
+    # player conceding the red card and increase player difference for actions of the opponent
     if red_cards_both_teams:
         for team_id in red_cards_both_teams.keys():
             for red_card in red_cards_both_teams[team_id]:
@@ -106,56 +185,19 @@ def add_player_diff(actions: pd.DataFrame, game: pd.Series, events: pd.DataFrame
 
 
 def convert_wyscout_to_h5():
-    root = os.path.join(os.getcwd(), 'wyscout_data')
-    wyscout_h5 = os.path.join('wyscout_data', 'wyscout.h5')
-    with pd.HDFStore(wyscout_h5) as wyscoutstore:
-        for competition in index.itertuples():
-            with open(os.path.join(root, competition.db_events), 'rt', encoding='utf-8') as wm:
+    """
+    Store wyscout events as dataframes.
+    """
+    wyscout_h5 = 'wyscout_data/wyscout.h5'
+    with pd.HDFStore(wyscout_h5) as store:
+        for competition in competition_index.itertuples():
+            with open(os.path.join('wyscout_data', competition.db_events), 'rt', encoding='utf-8') as wm:
                 events = pd.DataFrame(json.load(wm))
-            wyscoutstore[competition.db_events[:-5]] = events
+            # [:-5] removes the .json at the end
+            store[competition.db_events[:-5]] = events
 
 
-def convert_team_to_player_setback(team_setbacks: pd.DataFrame, player_games: pd.DataFrame, actions: pd.DataFrame,
-                                   players: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
-    players_by_id = players.set_index("player_id", drop=False)
-    player_setbacks = []
-    player_games = player_games.merge(teams[["team_id", "team_name_short"]], left_on="team_id", right_on="team_id")
-
-    for team_setback in tqdm(list(team_setbacks.itertuples()), desc="Converting team to player setbacks:"):
-        actions_in_game = actions[actions.game_id == team_setback.game_id]
-
-        group_by_period = actions_in_game[actions_in_game.period_id != 5].groupby("period_id")
-        last_action_in_period = []
-        for _, period in group_by_period:
-            last_action_in_period.append(round(period.time_seconds.max() / 60))
-        minutes_before_current_period = sum(last_action_in_period[:team_setback.period_id - 1])
-        minute_of_setback = round(team_setback.time_seconds / 60) + minutes_before_current_period
-
-        players_in_game = player_games[
-            (player_games.game_id == team_setback.game_id) & (player_games.team_name_short == team_setback.team)]
-        players_on_field = []
-        for player in players_in_game[players_in_game.is_starter].itertuples():
-            if player.minutes_played > minute_of_setback:
-                players_on_field.append(player)
-
-        for player in players_in_game[~players_in_game.is_starter].itertuples():
-            if (players_in_game.minutes_played.max() - player.minutes_played) < minute_of_setback:
-                players_on_field.append(player)
-
-        for player in players_on_field:
-            player = players_by_id.loc[player.player_id]
-            player_setbacks.append(pd.DataFrame(
-                data={"player": [player.nickname], "player_id": [player.player_id], "birth_date": [player.birth_date],
-                      "player_team": [team_setback.team], "opponent_team": [team_setback.opponent],
-                      "game_id": [team_setback.game_id], "home": [team_setback.home], "setback_type": ["goal conceded"],
-                      "period_id": [team_setback.period_id], "time_seconds": [team_setback.time_seconds],
-                      "score:": [team_setback.score]}))
-
-    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
-    return player_setbacks
-
-
-index = pd.DataFrame(
+competition_index = pd.DataFrame(
     [
         {
             'competition_id': 524,

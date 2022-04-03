@@ -12,6 +12,8 @@ from socceraction.vaep.base import VAEP
 from tqdm import tqdm
 from typing import List, Dict
 
+import utils
+
 warnings.filterwarnings('ignore')
 
 
@@ -278,3 +280,20 @@ def compare_models():
                 train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=atomic,
                             learner=learner, print_eval=False, store_eval=True, compute_features_labels=False,
                             validation_size=0.25)
+
+
+def main():
+    train_competitions = utils.train_competitions
+    test_competitions = utils.test_competitions
+    learner = "xgboost"
+    validation_size = 0.25
+    tree_params = dict(n_estimators=100, max_depth=3)
+    fit_params = dict(eval_metric='auc', verbose=True)
+
+    train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
+                learner=learner, print_eval=False, store_eval=False, compute_features_labels=False,
+                validation_size=validation_size, tree_params=tree_params, fit_params=fit_params)
+
+
+if __name__ == '__main__':
+    main()
