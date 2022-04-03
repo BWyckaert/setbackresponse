@@ -165,6 +165,13 @@ def _store_predictions(predictions_h5: str, predictions: pd.DataFrame):
 
 
 def plot_calibration(vaep: VAEP, X: pd.DataFrame, y: pd.DataFrame):
+    """
+    Plot the calibration curves for both labels
+
+    :param vaep: a vaep object
+    :param X: the test features
+    :param y: the test labels
+    """
     y_hat = vaep._estimate_probabilities(X)
 
     cal.CalibrationDisplay.from_predictions(y_true=y['scores'], y_prob=y_hat['scores'], n_bins=10,
@@ -177,22 +184,23 @@ def plot_calibration(vaep: VAEP, X: pd.DataFrame, y: pd.DataFrame):
 
 
 def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
-                print_eval=False, store_eval=False, store_pred=False, compute_features_labels=False,
+                print_eval=False, store_eval=False, store_pred=False, plot_cal=False, compute_features_labels=False,
                 validation_size=0.25, tree_params=None, fit_params=None) -> VAEP:
     """
-    Returns a trained vaep model (trained with the given learner) and stores the action ratings
+    Returns a trained vaep model trained with the given learner
 
+    :param plot_cal: plot the calibration curves of the labels
     :param fit_params: fit parameters for the learner
     :param tree_params: tree parameters for the learner
-    :param store_pred: boolean flag indicating whether or not to store predictions of the model
-    :param store_eval: boolean flag indicating whether or not to store evaluations of the model
+    :param store_pred: store predictions of the model
+    :param store_eval: store evaluations of the model
     :param validation_size: the size of the validation set
     :param test_competitions: the test competitions
     :param train_competitions: the train competitions
-    :param compute_features_labels: boolean flag indicating whether to recompute the features and labels
-    :param atomic: boolean flag indicating whether or not the actions should be atomic
+    :param compute_features_labels: recompute the features and labels
+    :param atomic: atomic actions or default
     :param learner: the learner to be used
-    :param print_eval: boolean flag indicating whether or not evaluation metrics should be printed
+    :param print_eval: print evaluation metrics
     :return: a trained vaep model
     """
     if atomic:
@@ -223,7 +231,6 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     train_features, train_labels = _read_features_and_labels(train_games, features_h5, labels_h5, vaep, _fs)
     test_features, test_labels = _read_features_and_labels(test_games, features_h5, labels_h5, vaep, _fs)
 
-    # random.seed(0)
     vaep.fit(train_features, train_labels, learner=learner, val_size=validation_size, tree_params=tree_params,
              fit_params=fit_params)
 
@@ -243,6 +250,9 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     if store_pred:
         _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
 
+    if plot_cal:
+        plot_calibration(vaep, test_features, test_labels)
+
     return vaep
 
 
@@ -259,6 +269,8 @@ def compare_models():
     tc = [tc1, tc2, tc3, tc4, tc5, tc6]
 
     test_competitions = ['Spanish first division', 'Italian first division', 'French first division']
+
+    random.seed(0)
 
     for atomic in [True, False]:
         for learner in learners:
