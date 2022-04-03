@@ -90,7 +90,6 @@ def add_goal_diff_atomic(actions: pd.DataFrame) -> pd.DataFrame:
     # For each action resulting in a goal, increase all consequent actions of the scoring team with 1 and decrease all
     # consequent actions of the conceding team with 1
     for index, goal in goal_actions.iterrows():
-
         # Check if the action resulting in a goal is not the last action in the game
         if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
 
@@ -127,7 +126,6 @@ def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
     # For each action resulting in a goal, increase all consequent actions of the scoring team with 1 and decrease all
     # consequent actions of the conceding team with 1
     for index, goal in goal_actions.iterrows():
-
         # Check if the action resulting in a goal is not the last action in the game
         if not goal.equals(actions.iloc[-1].drop(labels=['score_diff'])):
 

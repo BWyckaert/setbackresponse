@@ -195,10 +195,8 @@ def get_player_aggregates_and_store():
 
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore["player_setbacks"]
-        team_setbacks = setbackstore["teams_setbacks"]
+        team_setbacks = setbackstore["team_setbacks"]
         team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
-        setbackstore['team_as_player_setbacks'] = aggr.convert_team_to_player_setbacks(team_setbacks, player_games,
-                                                                                       actions, players, teams)
         team_as_player_setbacks = setbackstore['team_as_player_setbacks']
 
     player_aggregates = get_player_aggregates(player_setbacks, team_as_player_setbacks, team_setbacks_over_matches,
