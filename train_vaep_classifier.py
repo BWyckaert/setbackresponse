@@ -4,6 +4,8 @@ import warnings
 import pandas as pd
 import socceraction.atomic.vaep.features as afs
 import socceraction.vaep.features as fs
+import sklearn.calibration as cal
+import matplotlib.pyplot as plt
 
 from socceraction.atomic.vaep.base import AtomicVAEP
 from socceraction.vaep.base import VAEP
@@ -84,13 +86,11 @@ def _read_features_and_labels(games: pd.DataFrame, features_h5: str, labels_h5: 
     return all_features, all_labels
 
 
-def _print_eval(vaep: VAEP, predictions: Dict[str, Dict[str, float]]):
+def _print_eval(predictions: Dict[str, Dict[str, float]]):
     """
     Print brier and ROC score.
 
-    :param vaep: a vaep object
-    :param test_features: a dataframe representing the features of the testset
-    :param test_labels: a dataframe representing the labels of the testset
+    :param predictions: the predictions of the model
     """
     print()
     print()
@@ -102,14 +102,12 @@ def _print_eval(vaep: VAEP, predictions: Dict[str, Dict[str, float]]):
     print()
 
 
-def _store_eval(vaep: VAEP, predictions: Dict[str, Dict[str, float]], training_set: List[str],
+def _store_eval(predictions: Dict[str, Dict[str, float]], training_set: List[str],
                 learner: str, atomic: str, val_size: int):
     """
     Store brier and ROC score for the given arguments.
 
-    :param vaep: a vaep object
-    :param test_features: a dataframe representing the features of the testset
-    :param test_labels: a dataframe representing the labels of the testset
+    :param predictions: the predictions of the model
     :param training_set: list of the competitions used in the training set
     :param learner: the learner used to obtain test_labels
     :param atomic: a boolean indicating whether or not the atomic format was used
@@ -166,14 +164,26 @@ def _store_predictions(predictions_h5: str, predictions: pd.DataFrame):
         ratings[column_names].to_hdf(predictions_h5, 'game_{}'.format(int(game_id)))
 
 
+def plot_calibration(vaep: VAEP, X: pd.DataFrame, y: pd.DataFrame):
+    y_hat = vaep._estimate_probabilities(X)
+
+    cal.CalibrationDisplay.from_predictions(y_true=y['scores'], y_prob=y_hat['scores'], n_bins=10,
+                                            name="Calibration of scores label")
+    plt.show()
+
+    cal.CalibrationDisplay.from_predictions(y_true=y['concedes'], y_prob=y_hat['concedes'], n_bins=10,
+                                            name="Calibration of concedes label")
+    plt.show()
+
+
 def train_model(train_competitions: List[str], test_competitions: List[str], atomic=True, learner="xgboost",
                 print_eval=False, store_eval=False, store_pred=False, compute_features_labels=False,
                 validation_size=0.25, tree_params=None, fit_params=None) -> VAEP:
     """
     Returns a trained vaep model (trained with the given learner) and stores the action ratings
 
-    :param fit_params: parameters for the learner
-    :param tree_params: parameters for the learner
+    :param fit_params: fit parameters for the learner
+    :param tree_params: tree parameters for the learner
     :param store_pred: boolean flag indicating whether or not to store predictions of the model
     :param store_eval: boolean flag indicating whether or not to store evaluations of the model
     :param validation_size: the size of the validation set
@@ -221,12 +231,11 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
         predictions = vaep.score(test_features, test_labels)
 
         if print_eval:
-            _print_eval(vaep, predictions)
+            _print_eval(predictions)
 
         if store_eval:
             atomic_str = 'yes' if atomic else 'no'
-            _store_eval(vaep=vaep, test_features=test_features, test_labels=test_labels,
-                        training_set=train_competitions,
+            _store_eval(test_features=test_features, test_labels=test_labels, training_set=train_competitions,
                         learner=learner, atomic=atomic_str, val_size=validation_size)
 
     vaep.score(test_features, test_labels)
