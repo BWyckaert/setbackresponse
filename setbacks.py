@@ -739,6 +739,13 @@ def convert_team_to_player_setbacks(team_setbacks: pd.DataFrame, player_games: p
 
 
 def get_setbacks(competitions: List[str], atomic=False) -> tuple:
+    """
+    Gets all the setbacks in the given competitions.
+
+    :param competitions: a list of competition names
+    :param atomic: the actions are atomic
+    :return: three dataframes of player setbacks, in game team setbacks and over game team setbacks
+    """
     if atomic:
         _spadl = aspadl
         datafolder = 'atomic_data'
