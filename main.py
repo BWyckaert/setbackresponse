@@ -92,7 +92,7 @@ if __name__ == '__main__':
     # get_competition_aggregates_and_store()
     # get_player_aggregates_and_store()
 
-    atomic = True
+    atomic = False
     root = os.path.join(os.getcwd(), 'wyscout_data')
     if atomic:
         _spadl = aspadl
@@ -119,7 +119,6 @@ if __name__ == '__main__':
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
-    print(players)
 
     # with pd.HDFStore(setbacks_h5) as setbackstore:
     #     player_setbacks = setbackstore["player_setbacks"]
@@ -139,27 +138,27 @@ if __name__ == '__main__':
     #     )
 
     # games = games[games.competition_name != 'German first division']
-    # # games = games[games.competition_name == 'World Cup']
-    # # games = games[games.competition_name == 'Italian first division']
-    # all_actions = []
-    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
-    #     actions = actions[actions['period_id'] != 5]
-    #     actions = (
-    #         _spadl.add_names(actions)
-    #             .merge(players, how="left")
-    #             .merge(teams, how="left")
-    #             .sort_values(["game_id", "period_id", "action_id"])
-    #             .reset_index(drop=True)
-    #     )
-    #     values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
-    #     actions = utils.add_total_seconds_to_game(actions)
-    #     all_actions.append(pd.concat([actions, values], axis=1))
-    #     # actions = utils.add_player_diff(actions, game, all_events)
-    #     # actions = utils.add_goal_diff(actions)
-    #     # all_actions.append(actions)
-    #
-    # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    games = games[games.competition_name == 'World Cup']
+    # games = games[games.competition_name == 'Italian first division']
+    all_actions = []
+    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+        actions = actions[actions['period_id'] != 5]
+        actions = (
+            _spadl.add_names(actions)
+                .merge(players, how="left")
+                .merge(teams, how="left")
+                .sort_values(["game_id", "period_id", "action_id"])
+                .reset_index(drop=True)
+        )
+        values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+        actions = utils.add_total_seconds_to_game(actions)
+        all_actions.append(pd.concat([actions, values], axis=1))
+        # actions = utils.add_player_diff(actions, game, all_events)
+        # actions = utils.add_goal_diff(actions)
+        # all_actions.append(actions)
+
+    all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
     # get_rating_analysis_and_store(games, all_actions)
     # store_rating_progression_per_player(all_actions, players, games, player_games)
     # print(round(all_actions, 4))

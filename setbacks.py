@@ -26,7 +26,7 @@ def get_score(game: pd.Series, actions: pd.DataFrame, setback: pd.Series, atomic
     awayscore = 0
 
     if not atomic:
-        shotlike = {'shot', 'shot_penalty', 'shot_freekick'}
+        shotlike = ['shot', 'shot_penalty', 'shot_freekick']
         # Select all actions in before_setback that result in a goal
         goal_actions = before_setback[
             (before_setback['type_name'].isin(shotlike) & (before_setback['result_name'] == 'success')) | (
@@ -45,7 +45,7 @@ def get_score(game: pd.Series, actions: pd.DataFrame, setback: pd.Series, atomic
                 else:
                     awayscore += 1
     else:
-        goal_like = {'goal', 'owngoal'}
+        goal_like = ['goal', 'owngoal']
         # Select all actions in before_setback that result in a goal
         goal_actions = before_setback[before_setback['type_name'].isin(goal_like)]
         # Iterate over all goal actions and increment homescore and awayscore based on which team scores and whether it
@@ -106,14 +106,14 @@ def get_missed_penalties(games: pd.DataFrame, actions: pd.DataFrame, atomic: boo
     # Select all penalties that do not occur during penalty shootouts
     missed_penalties = actions[actions['type_name'] == 'shot_penalty']
 
-    # Remove penalties which result in a goal
+    shotlike = ['shot', 'shot_penalty', 'shot_freekick']
     for index, mp in missed_penalties.iterrows():
         # Get all actions within 5 seconds after the missed penalty (including the penalty)
         ca = actions[(actions['game_id'] == mp.game_id) & (actions['total_seconds'] >= mp.total_seconds) & (
                 actions['total_seconds'] < (mp.total_seconds + 5)) & (actions['period_id'] == mp.period_id)]
 
+        # If the penalty or one of the following actions results in a goal, remove the penalty
         if not atomic:
-            shotlike = ['shot', 'shot_penalty', 'shot_freekick']
             ca = ca[
                 ((ca['type_name'].isin(shotlike)) & (ca['result_name'] == 'success') & (
                         ca['team_id'] == mp.team_id)) | (
@@ -280,7 +280,7 @@ def get_goal_conceded(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) 
 
     # Get all goals in all games
     if not atomic:
-        shotlike = {'shot', 'shot_penalty', 'shot_freekick'}
+        shotlike = ['shot', 'shot_penalty', 'shot_freekick']
         goals = actions[((actions['type_name'].isin(shotlike)) & (actions['result_name'] == 'success')) | (
                 actions['result_name'] == 'owngoal')]
     else:
@@ -324,7 +324,7 @@ def get_foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
     print()
 
     # Get all freekick_like actions, both atomic and non-atomic
-    freekick_like = {'shot_penalty', 'freekick', 'freekick_crossed', 'freekick_short', 'shot_freekick'}
+    freekick_like = ['shot_penalty', 'freekick', 'freekick_crossed', 'freekick_short', 'shot_freekick']
     freekicks = actions[actions['type_name'].isin(freekick_like) & (actions.shift(1)['type_name'] == 'foul')]
 
     # Only consider freekicks on the opponents half
@@ -334,6 +334,7 @@ def get_foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
         freekicks = freekicks[freekicks['x'] > 52.5]
 
     setbacks = []
+    shotlike = ['shot', 'shot_penalty', 'shot_freekick']
     for index, freekick in freekicks.iterrows():
         # Get all actions within 10 seconds after the freekick
         ca = actions[
@@ -342,7 +343,6 @@ def get_foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
                     actions['period_id'] == freekick.period_id)]
 
         if not atomic:
-            shotlike = {'shot', 'shot_penalty', 'shot_freekick'}
             ca = ca[
                 ((ca['type_name'].isin(shotlike)) & (ca['result_name'] == 'success') & (
                         ca['team_id'] == freekick.team_id)) | (
@@ -379,7 +379,14 @@ def get_foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
 
 
 def get_bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
-    # TODO: rewrite using majority of passes missed
+    """
+    Get all bad passes that lead to a goal within 15 seconds after the pass.
+
+    :param games: a dataframe of games
+    :param actions: a dataframe of actions
+    :param atomic: the actions are atomic
+    :return: a dataframe of all the bad passes leading to a goal
+    """
     print("Finding bad pass leading to goal... ")
     print()
 
@@ -397,21 +404,33 @@ def get_bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, ato
                 actions['total_seconds'] > (goal.total_seconds - 15)) & (actions['period_id'] == goal.period_id)]
 
         if not atomic:
-            bad_pass = pa[((pa['type_name'] == 'pass') & (pa['result_name'] == 'fail')) & (
-                        (~(pa['team_id'] == goal.team_id) & (goal.result_name == 'success')) | (
-                            (pa['team_id'] == goal.team_id) & (goal.result_name == 'owngoal')))]
-            bad_pass = bad_pass[bad_pass.start_x < 65]
+            bad_pass = pa[(pa['type_name'] == 'pass') & (pa['result_name'] == 'fail')]
+            # Normal goal
+            if goal.result_name == 'success':
+                bad_pass = bad_pass[bad_pass['team_id'] != goal.team_id]
+            # Owngoal
+            else:
+                bad_pass = bad_pass[bad_pass['team_id'] == goal.team_id]
+            bad_pass = bad_pass[bad_pass['start_x'] < 65]
 
         else:
-            bad_pass = pa[((pa['type_name'] == 'pass') & (pa.shift(-1)['type_name'] == 'interception')) & (
-                        (~(pa['team_id'] == goal.team_id) & (goal.type_name == 'goal')) | (
-                            (pa['team_id'] == goal.team_id) & (goal.type_name == 'owngoal')))]
+            bad_pass = pa[(pa['type_name'] == 'pass') & (pa.shift(-1)['type_name'] == 'interception')]
+            # Normal goal
+            if goal.type_name == 'goal':
+                bad_pass = bad_pass[bad_pass['team_id'] != goal.team_id]
+            # Owngoal
+            else:
+                bad_pass = bad_pass[bad_pass['team_id'] == goal.team_id]
             bad_pass = bad_pass[bad_pass['x'] < 65]
 
         if not bad_pass.empty:
             bad_pass = bad_pass.iloc[-1]
-            if pa[(pa['time_seconds'] > bad_pass.time_seconds) & (pa['team_id'] == bad_pass.team_id)].empty:
+            # Don't consider bad passes where a change of possession occurs between the bad pass and the goal
+            # A keeper save or tackle are not considered change of possession
+            if not pa[(pa['total_seconds'] > bad_pass.total_seconds) & (pa['team_id'] == bad_pass.team_id) & (
+                    ~pa['type_name'].isin(['keeper_save', 'tackle']))].empty:
                 continue
+
             game, home, opponent = get_game_details(bad_pass, games)
             score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
 
@@ -432,49 +451,61 @@ def get_bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, ato
             ))
 
     setbacks = pd.concat(setbacks).reset_index(drop=True)
+
     return setbacks
 
 
 def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
+    """
+    Gets all consecutive bad passes.
+
+    :param games: a dataframe of games
+    :param actions: a dataframe of actions
+    :param atomic: the actions are atomic
+    :return: a dataframe with all the last passes in a sequence of bad passes
+    """
+    # TODO: rewrite using majority of passes missed
     print("Finding bad consecutive passes... ")
     print()
 
     last_bad_pass_in_seq = []
-    grouped_by_game = actions.groupby("game_id")
-    for game_id, game_actions in grouped_by_game:
-        grouped_by_player = game_actions.groupby("player_id")
+    grouped_by_game_period = actions.groupby(['game_id', 'period_id'])
+    for _, game_actions in grouped_by_game_period:
+        grouped_by_player = game_actions.groupby('player_id')
         for player_id, player_actions in grouped_by_player:
-            pass_actions = player_actions[
-                (player_actions.type_name == "pass") & (
-                        game_actions.shift(-1).period_id == game_actions.period_id)].reset_index(drop=True)
+            pass_actions = player_actions[player_actions['type_name'] == 'pass'].reset_index(drop=True)
+
+            # If there are no pass actions, go to next player
             if pass_actions.empty:
                 continue
+
             if not atomic:
-                # groups consecutive failed and successful passes
+                # Group consecutive failed and successful passes
                 grouped_by_success_failure = pass_actions.groupby(
-                    [(pass_actions.result_name != pass_actions.shift(1).result_name).cumsum(), "period_id"])
+                    [(pass_actions.result_name != pass_actions.shift(1).result_name).cumsum(), 'period_id'])
             else:
-                # add result_name column to dataframe to mimic not atomic dataframe
+                # Add result_name column to dataframe to mimic non-atomic action
                 next_actions = game_actions[
-                    (game_actions.shift(1).type_name == "pass") & (game_actions.shift(1).player_id == player_id) & (
-                            game_actions.shift(1).period_id == game_actions.period_id)].reset_index(drop=True)
-                pass_actions["result_name"] = next_actions.apply(
-                    lambda y: "success" if (y.type_name == "receival") else "fail", axis=1)
+                    (game_actions.shift(1)['type_name'] == 'pass') & (
+                                game_actions.shift(1)['player_id'] == player_id) & (
+                            game_actions.shift(1)['period_id'] == game_actions['period_id'])].reset_index(drop=True)
+                pass_actions['result_name'] = next_actions.apply(
+                    lambda y: 'success' if (y.type_name == 'receival') else 'fail', axis=1)
 
                 grouped_by_success_failure = pass_actions.groupby(
-                    [(pass_actions.result_name != pass_actions.shift(1).result_name).cumsum(), "period_id"])
+                    [(pass_actions['result_name'] != pass_actions.shift(1)['result_name']).cumsum(), 'period_id'])
 
             for _, sf in grouped_by_success_failure:
                 sf = sf.reset_index(drop=True)
-                # don't consider successful passes
-                if sf.iloc[0].result_name == "success":
+                # Don't consider successful passes
+                if sf.iloc[0].result_name == 'success':
                     continue
-                # only consider at least 3 bad consecutive passes
+                # Only consider at least 3 bad consecutive passes
                 if sf.shape[0] < 3:
                     continue
-                # only consider 3 bad passes within 300 seconds of each other
+                # Only consider 3 bad passes within 300 seconds of each other
                 while sf.shape[0] >= 3:
-                    if sf.at[2, "time_seconds"] - sf.at[0, "time_seconds"] < 300:
+                    if sf.at[2, 'total_seconds'] - sf.at[0, 'total_seconds'] < 300:
                         last_bad_pass_in_seq.append(sf.iloc[2].to_frame().T)
                         break
                     else:
@@ -482,32 +513,40 @@ def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomi
 
     last_bad_pass_in_seq = pd.concat(last_bad_pass_in_seq).reset_index(drop=True)
 
-    bpis_setbacks = []
+    setbacks = []
     for bad_pass in last_bad_pass_in_seq.itertuples():
         game, home, opponent = get_game_details(bad_pass, games)
         score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
 
-        bpis_setbacks.append(pd.DataFrame(
-            data={"player": [bad_pass.nickname],
-                  "player_id": [bad_pass.player_id],
-                  "birth_date": [bad_pass.birth_date],
-                  "player_team": [bad_pass.team_name_short],
-                  "opponent_team": [opponent],
-                  "game_id": [bad_pass.game_id],
-                  "home": [home],
-                  "setback_type": ["bad consecutive passes"],
-                  "period_id": [bad_pass.period_id],
-                  "time_seconds": [bad_pass.time_seconds],
+        setbacks.append(pd.DataFrame(
+            data={'player': [bad_pass.nickname],
+                  'player_id': [bad_pass.player_id],
+                  'birth_date': [bad_pass.birth_date],
+                  'player_team': [bad_pass.team_name_short],
+                  'opponent_team': [opponent],
+                  'game_id': [bad_pass.game_id],
+                  'home': [home],
+                  'setback_type': ['bad consecutive passes'],
+                  'period_id': [bad_pass.period_id],
+                  'time_seconds': [bad_pass.time_seconds],
                   'total_seconds': [bad_pass.total_seconds],
-                  "score:": [score]
+                  'score:': [score]
                   }
         ))
 
-    bpis_setbacks = pd.concat(bpis_setbacks).reset_index(drop=True)
-    return bpis_setbacks
+    setbacks = pd.concat(setbacks).reset_index(drop=True)
+
+    return setbacks
 
 
 def lost_game(game: pd.Series, team_id: int) -> bool:
+    """
+    Finds out whether or not the given game was lost by the given team.
+
+    :param game: a game series
+    :param team_id: a team id
+    :return: true if the team with team_id lost the game, false otherwise
+    """
     home = game.home_team_id == team_id
     score = game.label.split(", ")[1][0:5]
     if home:
@@ -516,60 +555,94 @@ def lost_game(game: pd.Series, team_id: int) -> bool:
         return int(score[0]) > int(score[4])
 
 
-def convert_to_fair_odds(games_odds: pd.DataFrame) -> pd.DataFrame:
+def convert_to_fair_chance(games_odds: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converts the betting odds to fair winning/drawing/losing chances.
+
+    :param games_odds: a dataframe of game odds
+    :return: a dataframe with the 1x2 betting odds converted to fair chances
+    """
+    # Calculate the margin used (assuming equal margin)
     games_odds['margin'] = games_odds.apply(
         lambda x: (1 / x['B365H']) + (1 / x['B365D']) + (1 / x['B365A']), axis=1)
+
+    # Convert each betting odds column to fair chance
     odds_columns = ['B365H', 'B365D', 'B365A']
     for column in odds_columns:
         games_odds[column] = games_odds.apply(
             lambda x: round((1 / x[column]) / x['margin'], 2), axis=1
         )
+
     games_odds = games_odds.rename(columns={'B365H': 'home_win', 'B365D': 'draw', 'B365A': 'away_win'})
+
     return games_odds
 
 
-def add_odds_to_games(games: pd.DataFrame) -> pd.DataFrame:
+def add_chance_to_games(games: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add winning/drawing/losing chance to the games dataframe.
+
+    :param games: a dataframe of games
+    :return: a dataframe of games with three added columns denoting the winning/drawing/losing chance
+    """
     odds = []
     for competition in list(utils.competitions_mapping.values()):
         odds.append(pd.read_csv('betting_data/odds_{}.csv'.format(competition)))
+
     odds = pd.concat(odds).reset_index(drop=True)
+
+    # Rename and convert necessary column and values to merge with games
     odds['Date'] = pd.to_datetime(odds['Date'], yearfirst=True, infer_datetime_format=True).dt.date
     odds = odds.replace({'HomeTeam': utils.teams_mapping, 'AwayTeam': utils.teams_mapping})
     odds = odds[['Date', 'HomeTeam', 'AwayTeam', 'B365H', 'B365D', 'B365A']]
     odds = odds.rename(
         columns={'HomeTeam': 'home_team_name_short', 'AwayTeam': 'away_team_name_short', 'Date': 'game_date'})
 
+    # Take the date out of date_time to match the odds game_date
     games['game_date'] = games.game_date.dt.date
 
     games_odds = games.merge(odds, on=['home_team_name_short', 'away_team_name_short', 'game_date'])
-    games_odds = convert_to_fair_odds(games_odds)
+    games_odds = convert_to_fair_chance(games_odds)
 
     return games_odds
 
 
 def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
+    """
+    Get consecutive losses with a chance of happening less that 30%.
+
+    :param games: a dataframe of games
+    :return: a dataframe with all consecutive losses
+    """
     print("Finding consecutive losses... ")
     print()
 
-    games_odds = add_odds_to_games(games)
+    games_with_chance = add_chance_to_games(games)
 
-    cl_setbacks = []
-    games_by_home_team = games_odds.groupby('home_team_id')
-    games_by_away_team = games_odds.groupby('away_team_id')
+    setbacks = []
+    games_by_home_team = games_with_chance.groupby('home_team_id')
+    games_by_away_team = games_with_chance.groupby('away_team_id')
     for team_id, games_for_team in games_by_home_team:
         cons_losses = []
+
+        # Combine the teams home games with its away games
         games_for_team = pd.concat([games_for_team, games_by_away_team.get_group(team_id)]).sort_values('game_date')
+
+        # Add column denoting lost/won game and losing chance
         games_for_team['lost_game'] = games_for_team.apply(lambda x: lost_game(x, team_id), axis=1)
         games_for_team['losing_chance'] = games_for_team.apply(
             lambda x: x['away_win'] if (x['home_team_id'] == team_id) else x['home_win'], axis=1)
+
+        # Group games by consecutive wins/losses
         grouped_by_loss_wins = games_for_team.groupby(
             [(games_for_team['lost_game'] != games_for_team.shift(1)['lost_game']).cumsum()])
 
         for _, lw in grouped_by_loss_wins:
             lw = lw.reset_index(drop=True)
-            # don't consider wins
+            # Don't consider wins
             if not lw.iloc[0]['lost_game']:
                 continue
+            # Add column denoting the chance of losing a sequence of games
             lw['cons_loss_chance'] = lw['losing_chance'].cumprod()
             for index, game in lw.iterrows():
                 if game['cons_loss_chance'] < 0.30:
@@ -581,18 +654,19 @@ def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
             team = last_loss.home_team_name_short if last_loss.home_team_id == team_id \
                 else last_loss.away_team_name_short
 
-            cl_setbacks.append(pd.DataFrame(
-                data={"team": [team],
-                      "lost game(s)": [cons_loss['game_id'].tolist()],
-                      "game_date_last_loss": [last_loss['game_date']],
-                      "competition": [last_loss['competition_name']],
-                      "setback_type": ["consecutive losses"],
-                      "chance": [last_loss['cons_loss_chance']]
+            setbacks.append(pd.DataFrame(
+                data={'team': [team],
+                      'lost games': [cons_loss['game_id'].tolist()],
+                      'game_date_last_loss': [last_loss['game_date']],
+                      'competition': [last_loss['competition_name']],
+                      'setback_type': ['consecutive losses'],
+                      'chance': [last_loss['cons_loss_chance']]
                       }
             ))
 
-    cl_setbacks = pd.concat(cl_setbacks).reset_index(drop=True)
-    return cl_setbacks
+    setbacks = pd.concat(setbacks).reset_index(drop=True)
+
+    return setbacks
 
 
 def convert_team_to_player_setbacks(team_setbacks: pd.DataFrame, player_games: pd.DataFrame, actions: pd.DataFrame,

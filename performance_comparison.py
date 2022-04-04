@@ -147,6 +147,7 @@ def time_on_ball_aggregates(player_actions: pd.DataFrame, first: pd.Series, last
 
 
 def success_rate(player_actions: pd.DataFrame) -> float:  # Requires non-atomic actions!!
+    # TODO: remove actions that are always success!
     success = player_actions[player_actions['result_name'] == 'success'].shape[0]
     fail = player_actions[player_actions['result_name'] != 'success'].shape[0]
     if success == 0 and fail == 0:

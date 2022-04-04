@@ -102,7 +102,7 @@ def competition_games_players(player_setbacks: pd.DataFrame, team_setbacks: pd.D
     return aggregates
 
 
-def players_in_all_games(player_games: pd.DataFrame, game_ids: list) -> list:
+def players_in_majority_of_games(player_games: pd.DataFrame, game_ids: list) -> list:
     games = player_games[player_games['game_id'].isin(game_ids)]
     nb_games = games['player_id'].value_counts()
     all_games_played = nb_games[nb_games > int(len(game_ids) / 2)]
@@ -111,7 +111,7 @@ def players_in_all_games(player_games: pd.DataFrame, game_ids: list) -> list:
 
 def extend_with_playerlist(team_setbacks_over_matches: pd.DataFrame, player_games: pd.DataFrame) -> pd.DataFrame:
     team_setbacks_over_matches['playerlist'] = team_setbacks_over_matches.apply(
-        lambda x: players_in_all_games(player_games, x['lost game(s)']), axis=1
+        lambda x: players_in_majority_of_games(player_games, x['lost game(s)']), axis=1
     )
     return team_setbacks_over_matches
 
