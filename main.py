@@ -1,35 +1,13 @@
-import json
 import os
 import warnings
-from io import BytesIO
 
 import pandas as pd
-import numpy as np
-import socceraction
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
-import train_vaep_classifier as tvc
-import rating_analysis as ra
-import performance_comparison as pc
 
 from tqdm import tqdm
 
 import utils
-from dataloader import load_and_convert_wyscout_data
-from aggregates import get_competition_aggregates_and_store
-from aggregates import competition_games_players
-from setbacks import get_setbacks
-from aggregates import extend_with_playerlist
-from aggregates import get_player_aggregates_and_store
-from train_vaep_classifier import compare_models
-from rating_analysis import get_rating_progression
-from rating_analysis import get_rating_progression_with_goal_diff
-from rating_analysis import get_rating_analysis_and_store
-from rating_analysis import store_rating_progression_per_player
-from performance_comparison import compare_ingame_setbacks
-import expected_passing.xp_model as xp
-from performance_comparison import get_average_response
-import xgboost
 
 # warnings.filterwarnings('ignore', category=pd.io.pytables.PerformanceWarning)
 warnings.filterwarnings('ignore')
@@ -38,14 +16,7 @@ pd.set_option('display.width', 1000)
 
 
 if __name__ == '__main__':
-    # load_and_convert_wyscout_data(atomic=False)
-    # tvc.train_model(False)
-    # competition_games_players()
-    # compare_models()
-    # get_average_response()
-    # compare_ingame_setbacks()
-    # utils.convert_wyscout_to_h5()
-    # data_h5 = "expected_passing/data.h5"
+    # data_h5 = "xP_data/passes.h5"
     #
     # filters = ['total_seconds', 'player_diff', 'score_diff']
     # with pd.HDFStore(data_h5) as datastore:
@@ -66,7 +37,7 @@ if __name__ == '__main__':
     #         print()
     #         print(store[key])
     #         print()
-    # player_rating_progression_h5 = "results/pr_progression.h5"
+    # player_rating_progression_h5 = "results/player_rating_progression.h5"
     # with pd.HDFStore(player_rating_progression_h5) as store:
     #     for key in store.keys()[:10]:
     #         print(key)
@@ -74,7 +45,7 @@ if __name__ == '__main__':
     #         print(store[key])
     #         print()
 
-    # game_rating_progression_h5 = "results/gr_progression.h5"
+    # game_rating_progression_h5 = "results/game_rating_progression.h5"
     # with pd.HDFStore(game_rating_progression_h5) as store:
     #     rp_per_action = store["per_action"]
     #     rp_per_minute = store["per_minute"]
@@ -82,13 +53,6 @@ if __name__ == '__main__':
     # print(rp_per_action)
     # print(rp_per_minute)
     #
-
-
-    # tvc.train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
-    #                 learner="lightgbm", print_eval=True, store_eval=False, compute_features_labels=False,
-    #                 validation_size=0.25)
-
-    # get_setbacks(competitions=utils.all_competitions, atomic=False)
     # get_competition_aggregates_and_store()
     # get_player_aggregates_and_store()
 
@@ -119,19 +83,6 @@ if __name__ == '__main__':
         teams = spadlstore["teams"]
         player_games = spadlstore["player_games"]
 
-
-    # with pd.HDFStore(setbacks_h5) as setbackstore:
-    #     player_setbacks = setbackstore["player_setbacks"]
-    #     team_setbacks = setbackstore["teams_setbacks"]
-    #     team_setbacks_over_matches = setbackstore["team_setbacks_over_matches"]
-    #
-    # all_events = []
-    # for competition in utils.index.itertuples():
-    #     with open(os.path.join(root, competition.db_events), 'rt', encoding='utf-8') as wm:
-    #         all_events.append(pd.DataFrame(json.load(wm)))
-    #
-    # all_events = pd.concat(all_events)
-
     # for c in ['team_name_short', 'team_name']:
     #     teams[c] = teams[c].apply(
     #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
@@ -159,6 +110,7 @@ if __name__ == '__main__':
         # all_actions.append(actions)
 
     all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    print(all_actions.head())
     # get_rating_analysis_and_store(games, all_actions)
     # store_rating_progression_per_player(all_actions, players, games, player_games)
     # print(round(all_actions, 4))

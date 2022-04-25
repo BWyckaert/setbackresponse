@@ -84,12 +84,12 @@ def get_rating_progression(games: pd.DataFrame, actions: pd.DataFrame, per_minut
     return pd.concat([count, mean, std], axis=1)
 
 
-def store_rating_progression_per_player(actions: pd.DataFrame, players: pd.DataFrame, games: pd.DataFrame,
-                                        player_games: pd.DataFrame):
+def get_player_rating_progression_and_store(actions: pd.DataFrame, players: pd.DataFrame, games: pd.DataFrame,
+                                            player_games: pd.DataFrame):
     # Only consider player_games where the game_id is also in games
     player_games = player_games[player_games['game_id'].isin(games['game_id'].tolist())]
 
-    player_rating_progression_h5 = "results/pr_progression.h5"
+    player_rating_progression_h5 = "results/player_rating_progression.h5"
     with pd.HDFStore(player_rating_progression_h5) as store:
         for player_id in tqdm(list(players.player_id), "Getting rating progression per player: "):
             # Take the player_games for the player
@@ -113,13 +113,17 @@ def store_rating_progression_per_player(actions: pd.DataFrame, players: pd.DataF
                 store["per_minute_{}".format(player_id)] = progression_per_minute
 
 
-def get_rating_analysis_and_store(games: pd.DataFrame, actions: pd.DataFrame):
+def get_rating_analysis_and_store(games: pd.DataFrame, actions: pd.DataFrame, atomic=True):
     rp_per_action = get_rating_progression(games, actions, False)
     rp_per_minute = get_rating_progression(games, actions, True)
     rp_per_action_with_goal_diff = get_rating_progression_with_goal_diff(games, actions, False)
     rp_per_minute_with_goal_diff = get_rating_progression_with_goal_diff(games, actions, True)
 
-    game_rating_progression_h5 = "results/gr_progression_default.h5"
+    if atomic:
+        game_rating_progression_h5 = 'results/game_rating_progression.h5'
+    else:
+        game_rating_progression_h5 = 'results/game_rating_progression_default.h5'
+
     with pd.HDFStore(game_rating_progression_h5) as store:
         store["per_action"] = rp_per_action
         store["per_minute"] = rp_per_minute

@@ -110,7 +110,7 @@ def compute_features_and_labels(games: pd.DataFrame, actions: pd.DataFrame,
     y_test = y[~y['competition_name'].isin(train_competitions)].drop(columns={'competition_name'})
 
     # Store data
-    data_h5 = "expected_passing/data.h5"
+    data_h5 = "xP_data/passes.h5"
     with pd.HDFStore(data_h5) as datastore:
         datastore["X_train"] = X_train
         datastore["X_test"] = X_test
@@ -162,7 +162,7 @@ def fit(learner, X: pd.DataFrame, y: pd.DataFrame, val_size=0.2, tree_params=Non
 
 def train_model(filters=[], learner="xgboost", store=False):
     # Get the data
-    data_h5 = "expected_passing/data.h5"
+    data_h5 = "xP_data/passes.h5"
     with pd.HDFStore(data_h5) as datastore:
         X_train = datastore["X_train"]
         X_test = datastore["X_test"]
@@ -181,11 +181,11 @@ def train_model(filters=[], learner="xgboost", store=False):
     # Fit the model and save
     model = fit(learner, X_train, y_train)
     if learner == "xgboost":
-        model.save_model("expected_passing/xP_XGBoost.txt")
+        model.save_model("xP_data/xP_XGBoost.txt")
     if learner == "catboost":
-        model.save_model("expected_passing/xP_CatBoost.txt")
+        model.save_model("xP_data/xP_CatBoost.txt")
     if learner == "lightgbm":
-        model.booster_.save_model("expected_passing/xP_lightgbm.txt")
+        model.booster_.save_model("xP_data/xP_lightgbm.txt")
 
     # Print some evaluation metrics for the model that has just been fitted
     evaluate(learner, X_test, y_test)
@@ -204,16 +204,16 @@ def evaluate(learner, X_test: pd.DataFrame, y_test: pd.DataFrame, filters):
     # Get the model and calculate y_hat and y_prob
     if learner == "xgboost":
         model = xgboost.XGBClassifier()
-        model.load_model("expected_passing/xP_XGBoost.txt")
+        model.load_model("xP_data/xP_XGBoost.txt")
         y_hat = model.predict(X_test)
         y_prob = model.predict_proba(X_test)[:, 1]
     if learner == "catboost":
         model = catboost.CatBoostClassifier()
-        model.load_model("expected_passing/xP_CatBoost.txt")
+        model.load_model("xP_data/xP_CatBoost.txt")
         y_hat = model.predict(X_test)
         y_prob = model.predict_proba(X_test)[:, 1]
     if learner == "lightgbm":
-        model = lightgbm.Booster(model_file="expected_passing/xP_lightgbm.txt")
+        model = lightgbm.Booster(model_file="xP_data/xP_lightgbm.txt")
         y_prob = model.predict(X_test)
         y_hat = np.round(y_prob)
 
@@ -237,20 +237,20 @@ def store_predictions(learner, X_test: pd.DataFrame, filters):
     # Get model and calculate y_prob
     if learner == "xgboost":
         model = xgboost.XGBClassifier()
-        model.load_model("expected_passing/xP_XGBoost.txt")
+        model.load_model("xP_data/xP_XGBoost.txt")
         y_prob = model.predict_proba(X_test)[:, 1]
     if learner == "catboost":
         model = catboost.CatBoostClassifier()
-        model.load_model("expected_passing/xP_CatBoost.txt")
+        model.load_model("xP_data/xP_CatBoost.txt")
         y_prob = model.predict_proba(X_test)[:, 1]
     if learner == "lightgbm":
-        model = lightgbm.Booster(model_file="expected_passing/xP_lightgbm.txt")
+        model = lightgbm.Booster(model_file="xP_data/xP_lightgbm.txt")
         y_prob = model.predict(X_test)
 
     X_test["exp_accuracy"] = y_prob
 
     # Store exp_accuracy
-    predictions_h5 = "expected_passing/predictions.h5"
+    predictions_h5 = "xP_data/predictions.h5"
     with pd.HDFStore(predictions_h5) as predictionstore:
         predictionstore["predictions"] = X_test[["exp_accuracy"]]
 
@@ -265,21 +265,20 @@ def plot_calibration(X_test: pd.DataFrame, y_test: pd.DataFrame, filters, learne
     # Get model and calculate y_prob
     if learner == "xgboost":
         model = xgboost.XGBClassifier()
-        model.load_model("expected_passing/xP_XGBoost.txt")
+        model.load_model("xP_data/xP_XGBoost.txt")
         y_prob = model.predict_proba(X_test)[:, 1]
         y_hat = model.predict(X_test)
     if learner == "catboost":
         model = catboost.CatBoostClassifier()
-        model.load_model("expected_passing/xP_CatBoost.txt")
+        model.load_model("xP_data/xP_CatBoost.txt")
         y_prob = model.predict_proba(X_test)[:, 1]
         y_hat = model.predict(X_test)
     if learner == "lightgbm":
-        model = lightgbm.Booster(model_file="expected_passing/xP_lightgbm.txt")
+        model = lightgbm.Booster(model_file="xP_data/xP_lightgbm.txt")
         y_prob = model.predict(X_test)
         y_hat = np.round(y_prob)
 
     disp = cal.CalibrationDisplay.from_predictions(y_true=y_test, y_prob=y_prob, n_bins=10)
 
     plt.show()
-    print(metrics.r2_score(y_true=y_test, y_pred=y_hat))
 

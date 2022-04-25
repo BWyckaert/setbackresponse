@@ -156,9 +156,12 @@ About
 /wyscout_data/
 /betting_data/
 /aggregates/
-/expected_passing/data.h5
-/expected_passing/xP_CatBoost.txt
-/expected_passing/xP_lightgbm.txt
-/expected_passing/xP_XGBoost.txt
-/expected_passing/predictions.h5
+/xP_data/passes.h5
+/xP_data/xP_CatBoost.txt
+/xP_data/xP_lightgbm.txt
+/xP_data/xP_XGBoost.txt
+/xP_data/predictions.h5
 /results/
+/xP_data/passes.h5
+/setback_data/
+/xP_data/

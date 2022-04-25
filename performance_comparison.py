@@ -89,7 +89,7 @@ def vaep_aggregates(player_actions: pd.DataFrame, first: pd.Series, last: pd.Ser
                     before=True) -> Tuple[float]:
     if player_actions.empty:
         return 0, 0
-    game_rating_progression_h5 = "results/gr_progression.h5"
+    game_rating_progression_h5 = "results/game_rating_progression.h5"
     with pd.HDFStore(game_rating_progression_h5) as store:
         per_action = store["per_action"]
         per_minute = store["per_minute"]
@@ -156,7 +156,7 @@ def success_rate(player_actions: pd.DataFrame) -> float:  # Requires non-atomic 
 
 
 def get_average_risk(actions: pd.DataFrame) -> float:
-    predictions_h5 = "expected_passing/predictions.h5"
+    predictions_h5 = "xP_data/predictions.h5"
     with pd.HDFStore(predictions_h5) as predictionstore:
         predictions = predictionstore["predictions"]
 
@@ -241,7 +241,7 @@ def compare_ingame_setbacks():
 
     responses = get_responses(player_setbacks, player_games, a_actions, d_actions)
 
-    compstore_h5 = "results/comparisons.h5"
+    compstore_h5 = "setback_data/comparisons.h5"
     with pd.HDFStore(compstore_h5) as compstore:
         for index in responses.keys():
             compstore["ingame_comp_{}".format(index)] = responses[index]
@@ -273,7 +273,7 @@ def get_average_response():
     player_setbacks = player_setbacks[player_setbacks['setback_type'] != "goal conceded"]
 
     responses: Dict[Tuple, List[pd.DataFrame]] = {}
-    compstore_h5 = "results/comparisons.h5"
+    compstore_h5 = "setback_data/comparisons.h5"
     with pd.HDFStore(compstore_h5) as compstore:
         for index, setback in player_setbacks.iterrows():
             setback_response = compstore["ingame_comp_{}".format(index)]
@@ -286,7 +286,7 @@ def get_average_response():
                 else:
                     responses[key] = [setback_response]
 
-    avg_response_h5 = "results/avg_response.h5"
+    avg_response_h5 = "setback_data/avg_response.h5"
     with pd.HDFStore(avg_response_h5) as store:
         for key in responses.keys():
             number = len(responses[key])
@@ -301,7 +301,7 @@ def get_average_response():
 
 def compare_for_setback(setback_type: str, player_id: Optional = None):
     avg_responses = {}
-    avg_response_h5 = "results/avg_response.h5"
+    avg_response_h5 = "setback_data/avg_response.h5"
     with pd.HDFStore(avg_response_h5) as store:
         for key in store.keys():
             number = int(key.split("(")[1][:-1])

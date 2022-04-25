@@ -206,13 +206,43 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
     :return: a trained vaep model
     """
     if atomic:
-        vaep = AtomicVAEP()
-        datafolder = 'atomic_data'
         _fs = afs
+        xfns = [
+            _fs.actiontype,
+            _fs.actiontype_onehot,
+            _fs.bodypart,
+            _fs.bodypart_onehot,
+            # _fs.time,
+            _fs.team,
+            _fs.time_delta,
+            _fs.location,
+            _fs.polar,
+            _fs.movement_polar,
+            _fs.direction,
+            _fs.goalscore,
+        ]
+        vaep = AtomicVAEP(xfns=xfns)
+        datafolder = 'atomic_data'
     else:
-        vaep = VAEP()
-        datafolder = 'default_data'
         _fs = fs
+        xfns = [
+            _fs.actiontype_onehot,
+            _fs.result_onehot,
+            _fs.actiontype_result_onehot,
+            _fs.bodypart_onehot,
+            # _fs.time,
+            _fs.startlocation,
+            _fs.endlocation,
+            _fs.startpolar,
+            _fs.endpolar,
+            _fs.movement,
+            _fs.team,
+            _fs.time_delta,
+            _fs.space_delta,
+            _fs.goalscore,
+        ]
+        vaep = VAEP(xfns=xfns)
+        datafolder = 'default_data'
 
     spadl_h5 = os.path.join(datafolder, 'spadl.h5')
     features_h5 = os.path.join(datafolder, 'features.h5')
@@ -244,7 +274,7 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
 
         if store_eval:
             atomic_str = 'yes' if atomic else 'no'
-            _store_eval(test_features=test_features, test_labels=test_labels, training_set=train_competitions,
+            _store_eval(predictions=predictions, training_set=train_competitions,
                         learner=learner, atomic=atomic_str, val_size=validation_size)
 
     vaep.score(test_features, test_labels)
@@ -296,4 +326,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    compare_models()

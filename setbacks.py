@@ -656,7 +656,7 @@ def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
 
             setbacks.append(pd.DataFrame(
                 data={'team': [team],
-                      'lost games': [cons_loss['game_id'].tolist()],
+                      'lost_games': [cons_loss['game_id'].tolist()],
                       'game_date_last_loss': [last_loss['game_date']],
                       'competition': [last_loss['competition_name']],
                       'setback_type': ['consecutive losses'],
@@ -795,7 +795,7 @@ def get_setbacks(competitions: List[str], atomic=False) -> tuple:
 
     team_setbacks_over_matches = get_consecutive_losses(games)
 
-    setbacks_h5 = os.path.join(datafolder, 'setbacks.h5')
+    setbacks_h5 = 'setback_data/setbacks.h5'
     with pd.HDFStore(setbacks_h5) as store:
         store['player_setbacks'] = player_setbacks
         store['team_setbacks'] = team_setbacks
@@ -806,7 +806,7 @@ def get_setbacks(competitions: List[str], atomic=False) -> tuple:
 
 
 def main():
-    competitions = utils.test_competitions
+    competitions = utils.all_competitions
     get_setbacks(competitions=competitions, atomic=False)
 
 
