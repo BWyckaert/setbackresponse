@@ -1,5 +1,7 @@
 import json
 import os
+import warnings
+
 import pandas as pd
 import socceraction.atomic.spadl as aspadl
 import socceraction.spadl as spadl
@@ -7,6 +9,10 @@ import utils
 
 from typing import List
 from tqdm import tqdm
+
+warnings.filterwarnings('ignore')
+pd.set_option("display.max_rows", None, "display.max_columns", None)
+pd.set_option('display.width', 1000)
 
 
 def get_score(game: pd.Series, actions: pd.DataFrame, setback: pd.Series, atomic: bool) -> str:
@@ -78,7 +84,7 @@ def get_game_details(setback: pd.Series, games: pd.DataFrame) -> (pd.Series, boo
     suffers the setback plays at home and a string representing the opponent
     """
     # Select the game in which the setback occurs
-    game = games.set_index('game_id').loc[setback.game_id]
+    game = games.set_index('game_id', drop=False).loc[setback.game_id]
     # Retrieve the opponent of the player who suffers the setback and whether or not he plays at home or away
     if setback.team_id == game.home_team_id:
         home = True
@@ -251,7 +257,7 @@ def get_game_details_gc(setback: pd.Series, games: pd.DataFrame, owngoal: bool) 
     suffers the setback plays at home and a string representing the team of the player and the opponent
     """
     # Select the game in which the setback occurs
-    game = games.set_index('game_id').loc[setback.game_id]
+    game = games.set_index('game_id', drop=False).loc[setback.game_id]
     # Retrieve the opponent of the player who suffers the setback, his own team and whether or not he plays at home or
     # away
     if ((setback.team_id == game.home_team_id) and not owngoal) or ((setback.team_id != game.home_team_id) and owngoal):
@@ -320,7 +326,7 @@ def get_foul_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, atomic:
     :param atomic: the actions are atomic
     :return: a dataframe of all the fouls leading to goals in the given games
     """
-    print("Finding fouls leading to goals... ")
+    print("Finding fouls leading to goal... ")
     print()
 
     # Get all freekick_like actions, both atomic and non-atomic
@@ -457,23 +463,23 @@ def get_bad_pass_leading_to_goal(games: pd.DataFrame, actions: pd.DataFrame, ato
 
 def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomic: bool) -> pd.DataFrame:
     """
-    Gets all consecutive bad passes.
+    Gets the last bad pass in a sequence of passes where the majority of them failed.
 
     :param games: a dataframe of games
     :param actions: a dataframe of actions
     :param atomic: the actions are atomic
     :return: a dataframe with all the last passes in a sequence of bad passes
     """
-    # TODO: rewrite using majority of passes missed
     print("Finding bad consecutive passes... ")
     print()
 
+    passlike = ['pass', 'freekick_short', 'corner_short']
     last_bad_pass_in_seq = []
     grouped_by_game_period = actions.groupby(['game_id', 'period_id'])
     for _, game_actions in grouped_by_game_period:
         grouped_by_player = game_actions.groupby('player_id')
         for player_id, player_actions in grouped_by_player:
-            pass_actions = player_actions[player_actions['type_name'] == 'pass'].reset_index(drop=True)
+            pass_actions = player_actions[player_actions['type_name'].isin(passlike)].reset_index(drop=True)
 
             # If there are no pass actions, go to next player
             if pass_actions.empty:
@@ -481,8 +487,7 @@ def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomi
 
             if not atomic:
                 # Group consecutive failed and successful passes
-                grouped_by_success_failure = pass_actions.groupby(
-                    [(pass_actions.result_name != pass_actions.shift(1).result_name).cumsum(), 'period_id'])
+                bad_passes = pass_actions[pass_actions['result_name'] == 'fail']
             else:
                 # Add result_name column to dataframe to mimic non-atomic action
                 next_actions = game_actions[
@@ -492,31 +497,42 @@ def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomi
                 pass_actions['result_name'] = next_actions.apply(
                     lambda y: 'success' if (y.type_name == 'receival') else 'fail', axis=1)
 
-                grouped_by_success_failure = pass_actions.groupby(
-                    [(pass_actions['result_name'] != pass_actions.shift(1)['result_name']).cumsum(), 'period_id'])
+                bad_passes = pass_actions[pass_actions['result_name'] == 'fail']
 
-            for _, sf in grouped_by_success_failure:
-                sf = sf.reset_index(drop=True)
-                # Don't consider successful passes
-                if sf.iloc[0].result_name == 'success':
+            last_bad_pass_end_time = 0
+            for bad_pass in bad_passes.itertuples():
+                # Don't consider overlapping timeframes
+                if bad_pass.total_seconds < last_bad_pass_end_time:
                     continue
-                # Only consider at least 3 bad consecutive passes
-                if sf.shape[0] < 3:
+
+                # Take all passes within 2 minutes after the failed pass
+                consecutive_passes = pass_actions[(pass_actions['total_seconds'] >= bad_pass.total_seconds) &
+                                                  (pass_actions['total_seconds'] < bad_pass.total_seconds + 120)]
+
+                # Consider at least 3 passes in the 5 minute timeframe
+                if consecutive_passes.shape[0] < 3:
                     continue
-                # Only consider 3 bad passes within 300 seconds of each other
-                while sf.shape[0] >= 3:
-                    if sf.at[2, 'total_seconds'] - sf.at[0, 'total_seconds'] < 300:
-                        last_bad_pass_in_seq.append(sf.iloc[2].to_frame().T)
-                        break
-                    else:
-                        sf = sf.iloc[1:].reset_index(drop=True)
+
+                # Take out the failed passes
+                failed_passes = consecutive_passes[consecutive_passes['result_name'] == 'fail']
+
+                # Get the proportion of failed passes
+                proportion_failed = failed_passes.shape[0] / consecutive_passes.shape[0]
+
+                if proportion_failed <= 0.5:
+                    continue
+
+                last_bad_pass_in_seq.append(failed_passes.iloc[-1].to_frame().T)
+
+                # Update end time of the last bad pass
+                last_bad_pass_end_time = failed_passes.iloc[-1]['total_seconds']
 
     last_bad_pass_in_seq = pd.concat(last_bad_pass_in_seq).reset_index(drop=True)
 
     setbacks = []
     for bad_pass in last_bad_pass_in_seq.itertuples():
         game, home, opponent = get_game_details(bad_pass, games)
-        score = get_score(game, actions[actions.game_id == game.game_id], bad_pass, atomic)
+        score = get_score(game, actions[actions['game_id'] == game.game_id], bad_pass, atomic)
 
         setbacks.append(pd.DataFrame(
             data={'player': [bad_pass.nickname],
@@ -681,7 +697,7 @@ def convert_team_to_player_setbacks(team_setbacks: pd.DataFrame, player_games: p
     :param teams: a dataframe of teams
     :return: a dataframe of player setbacks from the team setbacks
     """
-    players_by_id = players.set_index('player_id', drop=True)
+    players_by_id = players.set_index('player_id', drop=False)
     player_setbacks = []
     player_games = player_games.merge(teams[['team_id', 'team_name_short']], on='team_id')
 

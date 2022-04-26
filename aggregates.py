@@ -76,7 +76,7 @@ def _get_setback_aggregates(player_setbacks: pd.DataFrame, team_setbacks: pd.Dat
 
     # Get the number of players, games and (different) setbacks in every competition
     aggregates = []
-    for competition in tqdm(list(competitions.itertuples()), desc="Collecting competition aggregates: "):
+    for competition in tqdm(list(competitions.itertuples()), desc="Collecting setback aggregates: "):
         # Get number of players and games in the competition
         games_in_competition = games[games.competition_id == competition.competition_id]
         game_ids = games_in_competition.game_id.tolist()
@@ -132,7 +132,9 @@ def _players_in_majority_of_games(player_games: pd.DataFrame, game_ids: list) ->
     nb_games_per_player = games['player_id'].value_counts()
     majority_games_played = nb_games_per_player[nb_games_per_player > int(len(game_ids) / 2)]
 
-    return majority_games_played.competition_index.tolist()
+    player_list = majority_games_played.index.tolist()
+
+    return player_list
 
 
 def _extend_with_playerlist(team_setbacks_over_matches: pd.DataFrame, player_games: pd.DataFrame) -> pd.DataFrame:
@@ -217,15 +219,15 @@ def get_player_aggregates_and_store(competitions: List[str]):
     _spadl = spadl
 
     spadl_h5 = 'default_data/spadl.h5'
-    with pd.HDFStore(spadl_h5) as spadlstore:
-        players = spadlstore['players']
-        player_games = spadlstore['player_games']
-        games = spadlstore['games']
+    with pd.HDFStore(spadl_h5) as store:
+        players = store['players']
+        player_games = store['player_games']
+        games = store['games'].merge(store['competitions'], how='left')
         # Only consider games in the given competitions
         games = games[games['competition_name'].isin(competitions)]
         all_actions = []
         for game_id in tqdm(list(games.game_id), desc="Collecting all actions: "):
-            actions = spadlstore[f'actions/game_{game_id}']
+            actions = store[f'actions/game_{game_id}']
             actions = _spadl.add_names(actions)
             all_actions.append(actions)
 
@@ -276,8 +278,7 @@ def get_competition_aggregates_and_store():
         default.to_excel(writer, 'Default')
         default_normalized.to_excel(writer, 'Default', startrow=default.shape[0] + 2)
 
-    datafolder = 'aggregates'
-    aggregates_h5 = os.path.join(datafolder, 'aggregates.h5')
+    aggregates_h5 = 'results/aggregates.h5'
     with pd.HDFStore(aggregates_h5) as aggregatesstore:
         aggregatesstore['competition_agg_atomic'] = atomic
         aggregatesstore['competition_agg_atomic_norm'] = atomic_normalized

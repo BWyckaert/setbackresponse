@@ -277,8 +277,6 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
             _store_eval(predictions=predictions, training_set=train_competitions,
                         learner=learner, atomic=atomic_str, val_size=validation_size)
 
-    vaep.score(test_features, test_labels)
-
     if store_pred:
         _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
 
@@ -308,8 +306,8 @@ def compare_models():
         for learner in learners:
             for train_competitions in tc:
                 train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=atomic,
-                            learner=learner, print_eval=False, store_eval=True, compute_features_labels=False,
-                            validation_size=0.25)
+                            learner=learner, print_eval=False, store_eval=True, store_pred=False, plot_cal=False,
+                            compute_features_labels=False, validation_size=0.25)
 
 
 def main():
@@ -321,10 +319,11 @@ def main():
     fit_params = dict(eval_metric='auc', verbose=True)
 
     train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
-                learner=learner, print_eval=False, store_eval=False, compute_features_labels=False,
-                validation_size=validation_size, tree_params=tree_params, fit_params=fit_params)
+                learner=learner, print_eval=True, store_eval=False, store_pred=True, plot_cal=True,
+                compute_features_labels=False, validation_size=validation_size, tree_params=tree_params,
+                fit_params=fit_params)
 
 
 if __name__ == '__main__':
-    # main()
-    compare_models()
+    main()
+    # compare_models()
