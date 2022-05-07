@@ -16,45 +16,6 @@ pd.set_option('display.width', 1000)
 
 
 if __name__ == '__main__':
-    # data_h5 = "xP_data/passes.h5"
-    #
-    # filters = ['total_seconds', 'player_diff', 'score_diff']
-    # with pd.HDFStore(data_h5) as datastore:
-    #     X_test = datastore["X_test"]
-    #     # X_train = datastore["X_train"]
-    #     y_test = datastore["y_test"]
-    #     # y_train = datastore["y_train"]
-    # # xp.plot_calibration(X_test=X_test, y_test=y_test, filters=filters, learner="xgboost")
-    # xp.evaluate("xgboost", X_test, y_test, filters)
-    # xp.store_predictions("xgboost", X_test, filters)
-    # tvc.compare_models()
-    # pc.compare_for_setback("missed shot")
-
-    # avg_response_h5 = "results/avg_response.h5"
-    # with pd.HDFStore(avg_response_h5) as store:
-    #     for key in store.keys()[:5]:
-    #         print(key)
-    #         print()
-    #         print(store[key])
-    #         print()
-    # player_rating_progression_h5 = "results/player_rating_progression.h5"
-    # with pd.HDFStore(player_rating_progression_h5) as store:
-    #     for key in store.keys()[:10]:
-    #         print(key)
-    #         print()
-    #         print(store[key])
-    #         print()
-
-    # game_rating_progression_h5 = "results/game_rating_progression.h5"
-    # with pd.HDFStore(game_rating_progression_h5) as store:
-    #     rp_per_action = store["per_action"]
-    #     rp_per_minute = store["per_minute"]
-    #
-    # print(rp_per_action)
-    # print(rp_per_minute)
-    #
-    # get_competition_aggregates_and_store()
-    # get_player_aggregates_and_store()
 
     atomic = False
     root = os.path.join(os.getcwd(), 'wyscout_data')
@@ -66,10 +27,13 @@ if __name__ == '__main__':
         datafolder = "default_data"
 
     spadl_h5 = os.path.join(datafolder, "spadl.h5")
-    setbacks_h5 = os.path.join(datafolder, "setbacks.h5")
+    setbacks_h5 = os.path.join('setback_data', "setbacks.h5")
     predictions_h5 = os.path.join(datafolder, "predictions.h5")
     features_h5 = os.path.join(datafolder, 'features.h5')
     labels_h5 = os.path.join(datafolder, 'labels.h5')
+
+    with pd.HDFStore(setbacks_h5) as store:
+        team_as_player_setbacks = store['team_as_player_setbacks']
 
     with pd.HDFStore(spadl_h5) as spadlstore:
         games = (
@@ -81,7 +45,27 @@ if __name__ == '__main__':
         competitions = spadlstore["competitions"]
         players = spadlstore["players"]
         teams = spadlstore["teams"]
-        player_games = spadlstore["player_games"]
+        player_games = spadlstore['player_games'].merge(spadlstore['teams'], how='left')
+
+    print(player_games.head())
+
+    games = games[games['competition_name'].isin(utils.test_competitions)]
+    team_as_player_setbacks = team_as_player_setbacks[team_as_player_setbacks['game_id'].isin(games['game_id'].tolist())]
+
+    comparisons_h5 = 'setback_data/setbacks.h5'
+    with pd.HDFStore(comparisons_h5) as store:
+        player_setbacks = store['player_setbacks']
+        team_setbacks = store['team_setbacks']
+        team_as_player_setbacks = store['team_as_player_setbacks']
+        team_setbacks_over_matches = store['team_setbacks_over_matches']
+        # print(player_setbacks.head())
+        # print(player_setbacks.tail())
+        # print(team_setbacks.head())
+        # print(team_setbacks.tail())
+        # print(team_as_player_setbacks.head())
+        # print(team_as_player_setbacks.tail())
+        # print(team_setbacks_over_matches.head())
+        # print(team_setbacks_over_matches.tail())
 
     # for c in ['team_name_short', 'team_name']:
     #     teams[c] = teams[c].apply(
@@ -102,16 +86,18 @@ if __name__ == '__main__':
                 .sort_values(["game_id", "period_id", "action_id"])
                 .reset_index(drop=True)
         )
-        values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+        # values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
         actions = utils.add_total_seconds_to_game(actions)
-        all_actions.append(pd.concat([actions, values], axis=1))
+        # all_actions.append(pd.concat([actions, values], axis=1))
         # actions = utils.add_player_diff(actions, game, all_events)
         # actions = utils.add_goal_diff(actions)
-        # all_actions.append(actions)
+        all_actions.append(actions)
 
-    all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
-    print(all_actions.head())
-    # get_rating_analysis_and_store(games, all_actions)
+    all_actions = pd.concat(all_actions).reset_index(drop=True)
+    # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    # print(all_actions.head())
+    print(all_actions[all_actions['type_name'] == 'dribble'])
+    # # get_rating_analysis_and_store(games, all_actions)
     # store_rating_progression_per_player(all_actions, players, games, player_games)
     # print(round(all_actions, 4))
     # xp.compute_features_and_labels(games, all_actions, ['German first division'])

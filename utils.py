@@ -96,13 +96,13 @@ def add_goal_diff_atomic(actions: pd.DataFrame) -> pd.DataFrame:
             # If the action is a goal, increase the score difference for all consequent actions of team of player
             # performing the action and decrease the score difference for actions of the opponent
             if goal['type_name'] == 'goal':
-                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                actions['score_diff'].iloc[index:] = actions.iloc[index:].apply(
                     lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
 
-            # If the action is a goal, decrease the score difference for all consequent actions of team of player
+            # If the action is an owngoal, decrease the score difference for all consequent actions of team of player
             # performing the action and increase the score difference for actions of the opponent
             if goal['type_name'] == 'owngoal':
-                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                actions['score_diff'].iloc[index:] = actions.iloc[index:].apply(
                     lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
 
     return actions
@@ -132,29 +132,42 @@ def add_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
             # If the action is a goal, increase the score difference for all consequent actions of team of player
             # performing the action and decrease the score difference for actions of the opponent
             if goal['result_name'] == 'success':
-                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                actions['score_diff'].iloc[index:] = actions.iloc[index:].apply(
                     lambda x: x['score_diff'] + 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] - 1, axis=1)
 
-            # If the action is a goal, decrease the score difference for all consequent actions of team of player
+            # If the action is an owngoal, decrease the score difference for all consequent actions of team of player
             # performing the action and increase the score difference for actions of the opponent
             if goal['result_name'] == 'owngoal':
-                actions['score_diff'].iloc[index + 1:] = actions.iloc[index + 1:].apply(
+                actions['score_diff'].iloc[index:] = actions.iloc[index:].apply(
                     lambda x: x['score_diff'] - 1 if (x['team_id'] == goal['team_id']) else x['score_diff'] + 1, axis=1)
 
     return actions
 
 
-def add_player_diff(actions: pd.DataFrame, game: pd.Series, events: pd.DataFrame) -> pd.DataFrame:
+def map_big_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
+    """
+    Map goal differences bigger than 2 to 2.
+
+    :param actions: a dataframe of actions
+    :return: a dataframe of actions where goal differences bigger than 2 are mapped to 2
+    """
+    actions['score_diff'] = actions.apply(lambda x: -2 if x['score_diff'] < -2 else x['score_diff'], axis=1)
+    actions['score_diff'] = actions.apply(lambda x: 2 if x['score_diff'] > 2 else x['score_diff'], axis=1)
+
+    return actions
+
+
+def add_player_diff(actions: pd.DataFrame, game_id: int, events: pd.DataFrame) -> pd.DataFrame:
     """
     Add a player difference column to actions in the given game.
 
     :param actions: a dataframe of actions
-    :param game: a series of a game
+    :param game_id: a game id
     :param events: a dataframe of wyscout events
     :return: a dataframe of actions with an added column denoting the player difference at the time of the action
     """
     # Get all wyscout events in the game resulting in a red card (1701) or second yellow (1703)
-    match_events = events[events['matchId'] == game.game_id]
+    match_events = events[events['matchId'] == game_id]
     match_events['tags'] = match_events.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
     red_cards = match_events[pd.DataFrame(match_events.tags.tolist()).isin([1701, 1703]).any(axis=1).values]
 
@@ -180,6 +193,43 @@ def add_player_diff(actions: pd.DataFrame, game: pd.Series, events: pd.DataFrame
                     lambda x: x['player_diff'] - 1 if (x['team_id'] == team_id) else x['player_diff'] + 1, axis=1)
 
     return actions
+
+
+def get_label(time_chunk: int, chunk_size: int) -> str:
+    """
+    Get the label (column name) for the time chunk given the chunk size.
+
+    :param time_chunk: index representing a time chunk
+    :param chunk_size: the chunk size
+    :return: a string representing the label for the time chunk
+    """
+    if time_chunk == -1:
+        label = "90+"
+    else:
+        label = "{} to {}".format(int(time_chunk) * chunk_size, (int(time_chunk) + 1) * chunk_size)
+
+    return label
+
+
+def get_player_on_field_actions(actions: pd.DataFrame, player_game: pd.Series, game_duration: int,
+                                setback: pd.Series) -> pd.DataFrame:
+    """
+    Get the actions in the game which are executed when the player suffering the setback is on the field.
+
+    :param actions: the actions in the game
+    :param player_game: the game in which the setback occurs
+    :param game_duration: the duration of the game
+    :param setback: a setback
+    :return: the actions which are executed when the player suffering the setback is on the field
+    """
+    if player_game.minutes_played == game_duration:
+        return actions
+
+    maximum = max(player_game.minutes_played, setback.total_seconds / 60)
+    if player_game.is_starter:
+        return actions[(actions['total_seconds'] / 60) <= maximum]
+    else:
+        return actions[(actions['total_seconds'] / 60) >= (game_duration - player_game.minutes_played) - 1]
 
 
 def convert_wyscout_to_h5():
@@ -353,3 +403,58 @@ column_order = ['0 to 10', '10 to 20', '20 to 30', '30 to 40', '40 to 50', '50 t
                 '80 to 90', '90+']
 
 wp = {'1H': 1, '2H': 2, 'E1': 3, 'E2': 4, 'P': 5}
+
+players = [
+    120353,
+    8325,
+    25867,
+    8717,
+    340386,
+    11066,
+    3802,
+    245364,
+    38021,
+    8317,
+    3319,
+    26085,
+    134513,
+    25707,
+    26150,
+    14911,
+    397178,
+    346101,
+    353833,
+    40810,
+    3322,
+    3359,
+    14723,
+    8287,
+    14817,
+    3306,
+    21174,
+    89186,
+    7972,
+    20455,
+    31528,
+    3682,
+    7910,
+    54,
+    3334,
+    122,
+    3353,
+    206314,
+    3323,
+    70273,
+    25747,
+    7905,
+    8317,
+    14712,
+    3346,
+    8278,
+    3321,
+    20461,
+    3476,
+    20420,
+    3429,
+    8307
+]

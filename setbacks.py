@@ -492,7 +492,7 @@ def get_bad_consecutive_passes(games: pd.DataFrame, actions: pd.DataFrame, atomi
                 # Add result_name column to dataframe to mimic non-atomic action
                 next_actions = game_actions[
                     (game_actions.shift(1)['type_name'] == 'pass') & (
-                                game_actions.shift(1)['player_id'] == player_id) & (
+                            game_actions.shift(1)['player_id'] == player_id) & (
                             game_actions.shift(1)['period_id'] == game_actions['period_id'])].reset_index(drop=True)
                 pass_actions['result_name'] = next_actions.apply(
                     lambda y: 'success' if (y.type_name == 'receival') else 'fail', axis=1)
@@ -663,7 +663,7 @@ def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
             for index, game in lw.iterrows():
                 if game['cons_loss_chance'] < 0.30:
                     cons_losses.append(lw[:index + 1])
-                    # break
+                    break
 
         for cons_loss in cons_losses:
             last_loss = cons_loss.iloc[-1]
@@ -754,6 +754,36 @@ def convert_team_to_player_setbacks(team_setbacks: pd.DataFrame, player_games: p
     return player_setbacks
 
 
+def time_before_after(setback: pd.Series, player_games: pd.DataFrame, all_actions: pd.DataFrame):
+    """
+    Get the time played by the player suffering the setback before and after the setback and return true if both are
+    bigger than 10, false otherwise.
+
+    :param setback: a setback
+    :param player_games: a dataframe of player games
+    :param all_actions: a dataframe of actions
+    :return: true if the minutes played by the player before and after the setback is bigger than 10 minutes, false
+    otherwise
+    """
+    try:
+        game_actions = all_actions[all_actions['game_id'] == setback.game_id]
+        players_in_game = player_games[player_games['game_id'] == setback.game_id].set_index('player_id')
+        player_game = players_in_game.loc[setback.player_id]
+        game_duration = players_in_game['minutes_played'].max()
+
+        player_on_field_actions = utils.get_player_on_field_actions(game_actions, player_game, game_duration, setback)
+
+        minutes_played_before = (setback.total_seconds - player_on_field_actions.iloc[0]['total_seconds']) / 60
+        minutes_played_after = player_game.minutes_played - minutes_played_before
+
+        if minutes_played_before >= 10 and minutes_played_after >= 10:
+            return True
+        else:
+            return False
+    except:
+        return False
+
+
 def get_setbacks(competitions: List[str], atomic=False) -> tuple:
     """
     Gets all the setbacks in the given competitions.
@@ -804,12 +834,31 @@ def get_setbacks(competitions: List[str], atomic=False) -> tuple:
                        get_bad_pass_leading_to_goal(games, all_actions, atomic),
                        get_bad_consecutive_passes(games, all_actions, atomic)]
 
-    player_setbacks = pd.concat(player_setbacks).reset_index(drop=True)
+    player_setbacks = pd.concat(player_setbacks)
+    player_setbacks = player_setbacks[player_setbacks['player_id'] != 0]
+    player_setbacks['before_after'] = player_setbacks.apply(lambda x: time_before_after(x, player_games, all_actions),
+                                                            axis=1)
+    player_setbacks = player_setbacks[player_setbacks['before_after']].drop(columns=['before_after']).reset_index(
+        drop=True)
+    player_setbacks['setback_id'] = player_setbacks.index
 
     team_setbacks = get_goal_conceded(games, all_actions, atomic)
+    team_setbacks.index += player_setbacks.shape[0]
+    team_setbacks['setback_id'] = team_setbacks.index
+
     team_as_player_setbacks = convert_team_to_player_setbacks(team_setbacks, player_games, all_actions, players, teams)
+    team_as_player_setbacks = team_as_player_setbacks[team_as_player_setbacks['player_id'] != 0]
+    team_as_player_setbacks['before_after'] = team_as_player_setbacks.apply(
+        lambda x: time_before_after(x, player_games, all_actions), axis=1)
+    team_as_player_setbacks = team_as_player_setbacks[team_as_player_setbacks['before_after']].drop(
+        columns=['before_after']).reset_index(drop=True)
+    team_as_player_setbacks.index += player_setbacks.shape[0] + team_setbacks.shape[0]
+    team_as_player_setbacks['setback_id'] = team_as_player_setbacks.index
 
     team_setbacks_over_matches = get_consecutive_losses(games)
+    team_setbacks_over_matches.index += player_setbacks.shape[0] + team_setbacks.shape[0] + \
+                                        team_as_player_setbacks.shape[0]
+    team_setbacks_over_matches['setback_id'] = team_setbacks_over_matches.index
 
     setbacks_h5 = 'setback_data/setbacks.h5'
     with pd.HDFStore(setbacks_h5) as store:
@@ -823,6 +872,7 @@ def get_setbacks(competitions: List[str], atomic=False) -> tuple:
 
 def main():
     competitions = utils.all_competitions
+    # competitions = ['World Cup']
     get_setbacks(competitions=competitions, atomic=False)
 
 

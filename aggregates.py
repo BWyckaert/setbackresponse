@@ -164,8 +164,10 @@ def _get_player_aggregates(player_setbacks: pd.DataFrame, team_as_player_setback
     aggregates = []
     for player in tqdm(list(players.itertuples()), desc="Collecting aggregates for players: "):
         # Get games played/start, total minutes played and average minutes played
-        games = player_games[player_games.player_id == player.player_id]
+        games = player_games[player_games['player_id'] == player.player_id]
         nb_games = games.shape[0]
+        if nb_games == 0:
+            continue
         nb_started = games[games['is_starter']].shape[0]
         minutes_played = games['minutes_played'].sum()
         avg_minutes = minutes_played / nb_games
@@ -182,7 +184,7 @@ def _get_player_aggregates(player_setbacks: pd.DataFrame, team_as_player_setback
         action_counts = action_counts.sort_index(axis=1)
 
         # Get the number of setbacks of this player
-        setbacks = player_setbacks[player_setbacks.player_id == player.player_id]
+        setbacks = player_setbacks[player_setbacks['player_id'] == player.player_id]
         setback_type1 = setbacks[['setback_type']]
         setback_type2 = team_setbacks_over_matches[pd.DataFrame(team_setbacks_over_matches['playerlist'].tolist()).isin(
             [player.player_id]).any(axis=1).values][['setback_type']]
@@ -207,10 +209,11 @@ def _get_player_aggregates(player_setbacks: pd.DataFrame, team_as_player_setback
                   'minutes played': [minutes_played],
                   'average minutes per game': [avg_minutes]}
         )
+
         aggregates.append(
             pd.concat([other_counts, action_counts, setback_counts], axis=1).set_index(['player_id', 'player']))
 
-    aggregates = pd.concat(aggregates).reset_index(drop=True)
+    aggregates = pd.concat(aggregates)
 
     return aggregates
 
@@ -225,6 +228,7 @@ def get_player_aggregates_and_store(competitions: List[str]):
         games = store['games'].merge(store['competitions'], how='left')
         # Only consider games in the given competitions
         games = games[games['competition_name'].isin(competitions)]
+        player_games = player_games[player_games['game_id'].isin(games['game_id'].tolist())]
         all_actions = []
         for game_id in tqdm(list(games.game_id), desc="Collecting all actions: "):
             actions = store[f'actions/game_{game_id}']
@@ -264,7 +268,7 @@ def get_competition_aggregates_and_store():
     setbacks_h5 = 'setback_data/setbacks.h5'
     with pd.HDFStore(setbacks_h5) as setbackstore:
         player_setbacks = setbackstore['player_setbacks']
-        team_setbacks = setbackstore['teams_setbacks']
+        team_setbacks = setbackstore['team_setbacks']
         team_setbacks_over_matches = setbackstore['team_setbacks_over_matches']
 
     other_aggregates = _get_setback_aggregates(player_setbacks, team_setbacks, team_setbacks_over_matches)

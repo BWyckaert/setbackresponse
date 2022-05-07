@@ -277,11 +277,11 @@ def train_model(train_competitions: List[str], test_competitions: List[str], ato
             _store_eval(predictions=predictions, training_set=train_competitions,
                         learner=learner, atomic=atomic_str, val_size=validation_size)
 
-    if store_pred:
-        _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
-
     if plot_cal:
         plot_calibration(vaep, test_features, test_labels)
+
+    # if store_pred:
+    #     _store_predictions(predictions_h5, _rate_actions(test_games, spadl_h5, vaep))
 
     return vaep
 
@@ -318,7 +318,9 @@ def main():
     tree_params = dict(n_estimators=100, max_depth=3)
     fit_params = dict(eval_metric='auc', verbose=True)
 
-    train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=True,
+    random.seed(0)
+
+    train_model(train_competitions=train_competitions, test_competitions=test_competitions, atomic=False,
                 learner=learner, print_eval=True, store_eval=False, store_pred=True, plot_cal=True,
                 compute_features_labels=False, validation_size=validation_size, tree_params=tree_params,
                 fit_params=fit_params)

@@ -1,3 +1,4 @@
+import math
 import warnings
 
 import pandas as pd
@@ -12,15 +13,7 @@ pd.set_option("display.max_rows", None, "display.max_columns", None)
 pd.set_option('display.width', 1000)
 
 
-def map_big_goal_diff(actions: pd.DataFrame) -> pd.DataFrame:
-    actions['score_diff'] = actions.apply(lambda x: -2 if x['score_diff'] < -2 else x['score_diff'], axis=1)
-    actions['score_diff'] = actions.apply(lambda x: 2 if x['score_diff'] > 2 else x['score_diff'], axis=1)
-    return actions
-
-
 def get_rating_progression_with_goal_diff_in_game(actions: pd.DataFrame, per_minute: bool) -> pd.DataFrame:
-    # Map goal differences bigger than 2 in absolute value to 2 or -2
-    actions = map_big_goal_diff(utils.add_goal_diff_atomic(actions))
     grouped_by_diff = actions.groupby('score_diff')
 
     # Get the rating progression for every goal difference in this game
@@ -51,8 +44,6 @@ def get_rating_progression_with_goal_diff(games: pd.DataFrame, actions: pd.DataF
 
 
 def get_rating_progression_during_game(actions: pd.DataFrame, per_minute: bool) -> pd.DataFrame:
-    actions = utils.add_total_seconds_to_game(actions)
-
     # Group actions in chunks of 10 minutes
     chunk_size = 10
     actions['time_chunck'] = actions.apply(
@@ -61,18 +52,15 @@ def get_rating_progression_during_game(actions: pd.DataFrame, per_minute: bool) 
 
     vaep_mean = {}
     for index, time_chunk in group_by_time_chunks:
-        # Set the label
-        if index == -1:
-            label = "90+"
-        else:
-            label = "{} to {}".format(int(index) * chunk_size, (int(index) + 1) * chunk_size)
+        # Get the label
+        label = utils.get_label(index, chunk_size)
 
         if per_minute:
             # Average VAEP value per minute
             if index == -1:
                 # Taking chunk_size would be overestimate if eg only 91 minutes are played
                 vaep_mean[label] = [time_chunk['vaep_value'].sum() / (
-                        (time_chunk['total_seconds'].iloc[-1] / 60) - 90)]
+                        (math.ceil(time_chunk['total_seconds'].iloc[-1] / 60)) - 90)]
             else:
                 vaep_mean[label] = [time_chunk['vaep_value'].sum() / chunk_size]
         else:
@@ -146,6 +134,8 @@ def get_rating_analysis_and_store(games: pd.DataFrame, actions: pd.DataFrame, at
     with pd.HDFStore(game_rating_progression_h5) as store:
         store['per_action'] = rp_per_action
         store['per_minute'] = rp_per_minute
+        store['per_action_with_goal_diff'] = rp_per_action_with_goal_diff[1]
+        store['per_minute_with_goal_diff'] = rp_per_minute_with_goal_diff[1]
 
     with pd.ExcelWriter('results/rating_analysis.xlsx') as writer:
         rp_per_action.to_excel(writer, "Rating progression")
@@ -174,6 +164,8 @@ def main():
             actions = store['actions/game_{}'.format(game_id)]
             actions = actions[actions['period_id'] != 5]
             actions = aspadl.add_names(actions)
+            actions = utils.add_goal_diff_atomic(actions)
+            actions = utils.map_big_goal_diff(actions)
             values = pd.read_hdf(predictions_h5, 'game_{}'.format(game_id))
             all_actions.append(pd.concat([actions, values], axis=1))
 
