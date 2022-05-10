@@ -666,6 +666,7 @@ def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
                     break
 
         for cons_loss in cons_losses:
+            first_loss = cons_loss.iloc[0]
             last_loss = cons_loss.iloc[-1]
             team = last_loss.home_team_name_short if last_loss.home_team_id == team_id \
                 else last_loss.away_team_name_short
@@ -673,6 +674,7 @@ def get_consecutive_losses(games: pd.DataFrame) -> pd.DataFrame:
             setbacks.append(pd.DataFrame(
                 data={'team': [team],
                       'lost_games': [cons_loss['game_id'].tolist()],
+                      'game_date_first_loss': [first_loss['game_date']],
                       'game_date_last_loss': [last_loss['game_date']],
                       'competition': [last_loss['competition_name']],
                       'setback_type': ['consecutive losses'],
@@ -858,6 +860,8 @@ def get_setbacks(competitions: List[str], atomic=False) -> tuple:
     team_setbacks_over_matches = get_consecutive_losses(games)
     team_setbacks_over_matches.index += player_setbacks.shape[0] + team_setbacks.shape[0] + \
                                         team_as_player_setbacks.shape[0]
+    # TODO remove next line when done
+    # team_setbacks_over_matches.index += 57413 # Only used when redoing team_setbacks_over_games and not the others
     team_setbacks_over_matches['setback_id'] = team_setbacks_over_matches.index
 
     setbacks_h5 = 'setback_data/setbacks.h5'

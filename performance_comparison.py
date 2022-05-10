@@ -1,16 +1,16 @@
 import math
-import os
 import warnings
+import utils
 
 import pandas as pd
 import numpy as np
 import statistics as stat
 import socceraction.spadl as spadl
 import socceraction.atomic.spadl as aspadl
-import utils
+import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 
 warnings.filterwarnings('ignore')
 pd.set_option("display.max_rows", None, "display.max_columns", None)
@@ -191,7 +191,6 @@ def get_success_rate(player_actions: pd.DataFrame) -> float:  # Requires non-ato
 # def get_expected_success_rate(player_actions: pd.DataFrame) -> float:
 
 
-
 def get_average_risk(actions: pd.DataFrame) -> float:
     predictions_h5 = 'xP_data/predictions.h5'
     with pd.HDFStore(predictions_h5) as predictionstore:
@@ -210,7 +209,7 @@ def get_average_risk(actions: pd.DataFrame) -> float:
 
 
 def get_responses(player_setbacks: pd.DataFrame, player_games: pd.DataFrame, a_actions: pd.DataFrame,
-                  d_actions: pd.DataFrame) -> Dict[Tuple, List[pd.DataFrame]]:
+                  d_actions: pd.DataFrame) -> Dict[int, pd.DataFrame]:
     responses: Dict[int, pd.DataFrame] = {}
     for player_setback in tqdm(list(player_setbacks.itertuples()), desc="Comparing performance: "):
         try:
@@ -231,21 +230,22 @@ def get_responses(player_setbacks: pd.DataFrame, player_games: pd.DataFrame, a_a
     return responses
 
 
-def get_performance_per_minute_in_games(game_ids: List[int], team: str, actions: pd.DataFrame, player_games: pd.DataFrame):
+def get_performance_per_minute_in_games(game_ids: List[int], team: str, actions: pd.DataFrame,
+                                        player_games: pd.DataFrame) -> float:
     team_actions = actions[actions['team_name_short'] == team]
     total_vaep = 0
     total_minutes = 0
     for game_id in game_ids:
         actions_in_game = team_actions[team_actions['game_id'] == game_id]
         total_vaep += actions_in_game['vaep_value'].sum()
-        total_minutes += player_games[player_games['game_id'] == game_id].max()
+        total_minutes += player_games.loc[player_games['game_id'] == game_id, 'minutes_played'].max()
 
     vaep_per_minute = total_vaep / total_minutes
 
     return vaep_per_minute
 
 
-def get_next_games(setback: pd.Series, games: pd.DataFrame):
+def get_next_games(setback: pd.Series, games: pd.DataFrame) -> List[str]:
     # Get the games in the competition in which the setback occurred
     games_in_competition = games[games['competition_name'] == setback.competition]
 
@@ -254,7 +254,7 @@ def get_next_games(setback: pd.Series, games: pd.DataFrame):
                                       (games_in_competition['away_team_name_short'] == setback.team)]
 
     # Get the games played after the setback occurred
-    games_after_setback = team_games[team_games['game_date'] > setback.game_date_last_loss]
+    games_after_setback = team_games[team_games['game_date'].dt.date > setback.game_date_last_loss]
 
     # Get the number of games played after the setback occurred
     nb_games_after_setback = games_after_setback.shape[0]
@@ -262,8 +262,31 @@ def get_next_games(setback: pd.Series, games: pd.DataFrame):
     # Get the first 5 games after the setback. If there are no 5 games, take all remaining games
     nb_next_games = min(5, nb_games_after_setback)
     next_games = games_after_setback.iloc[:nb_next_games]
+    next_game_ids = next_games['game_id'].tolist()
 
-    return next_games
+    return next_game_ids
+
+
+def get_previous_games(setback: pd.Series, games: pd.DataFrame) -> List[str]:
+    # Get the games in the competition in which the setback occurred
+    games_in_competition = games[games['competition_name'] == setback.competition]
+
+    # Get the games in the competition played by the team suffering the setback
+    team_games = games_in_competition[(games_in_competition['home_team_name_short'] == setback.team) |
+                                      (games_in_competition['away_team_name_short'] == setback.team)]
+
+    # Get the games played after the setback occurred
+    games_before_setback = team_games[team_games['game_date'].dt.date < setback.game_date_first_loss]
+
+    # Get the number of games played after the setback occurred
+    nb_games_before_setback = games_before_setback.shape[0]
+
+    # Get the first 5 games after the setback. If there are no 5 games, take all remaining games
+    nb_previous_games = min(5, nb_games_before_setback)
+    previous_games = games_before_setback.iloc[:nb_previous_games]
+    previous_game_ids = previous_games['game_id'].tolist()
+
+    return previous_game_ids
 
 
 def compare_response_by_losing_chance():
@@ -281,16 +304,17 @@ def compare_response_by_losing_chance():
         player_games = store['player_games'].merge(store['teams'], how='left')
         teams = store['teams']
 
-    # games = games[games['competition_name'].isin(utils.test_competitions)]
-    games = games[games['competition_name'].isin(['World Cup'])]
-
-    print(games.head())
+    games = games[games['competition_name'].isin(utils.test_competitions)]
+    # games = games[games['competition_name'].isin(['World Cup'])]
 
     with pd.HDFStore(setbacks_h5) as store:
         cons_loss_setbacks = store['team_setbacks_over_matches']
 
     cons_loss_setbacks = cons_loss_setbacks[
         cons_loss_setbacks.apply(lambda x: set(x['lost_games']).issubset(set(games['game_id'])), axis=1)]
+
+    # cons_loss_setbacks['nb_games'] = cons_loss_setbacks.apply(lambda x: len(x['lost_games']), axis=1)
+    # cons_loss_setbacks = cons_loss_setbacks[cons_loss_setbacks['nb_games'] > 1]
 
     all_actions = []
     for game_id in tqdm(list(games.game_id), desc="Rating actions"):
@@ -303,10 +327,45 @@ def compare_response_by_losing_chance():
 
     all_actions = pd.concat(all_actions).reset_index(drop=True)
 
-    print(all_actions.head())
+    setback_aggregates = []
 
-    # for setback in tqdm(list(cons_loss_setbacks.iterrows()), desc="Comparing response by losing chance: "):
-        # TODO: how to compare performance
+    for setback in tqdm(list(cons_loss_setbacks.itertuples()), desc="Comparing response by losing chance: "):
+        previous_game_ids = get_previous_games(setback, games)
+        next_game_ids = get_next_games(setback, games)
+
+        if len(previous_game_ids) < 3 or len(next_game_ids) < 3:
+            continue
+
+        performance_before = get_performance_per_minute_in_games(previous_game_ids, setback.team, all_actions,
+                                                                 player_games)
+
+        performance_after = get_performance_per_minute_in_games(next_game_ids, setback.team, all_actions, player_games)
+
+        setback_aggregates.append(pd.DataFrame(
+            data={'chance': [setback.chance],
+                  'nb_lost_games': [len(setback.lost_games)],
+                  'perf_diff': [performance_after - performance_before]}
+        ))
+
+    setback_aggregates = pd.concat(setback_aggregates).reset_index(drop=True)
+
+    bins = pd.cut(x=setback_aggregates['chance'], bins=np.arange(0, 0.35, 0.05),
+                  labels=['0.0-0.5', '0.5-1.0', '1.0-1.5', '1.5-2.0', '2.0-2.5', '2.5-3.0'])
+    perf_diff_avg = setback_aggregates.groupby(bins).agg({'perf_diff': 'mean'})
+    perf_diff_std = setback_aggregates.groupby(bins).agg({'perf_diff': 'std'})
+    perf_diff_median = setback_aggregates.groupby(bins).aggregate({'perf_diff': 'median'})
+
+    print(perf_diff_avg)
+    print(perf_diff_std)
+    print(perf_diff_median)
+
+    fig, ax = plt.subplots(figsize=(7, 4.8))
+    ax.errorbar(perf_diff_avg.index, perf_diff_avg['perf_diff'], yerr=perf_diff_std['perf_diff'], ecolor='black',
+                capsize=10)
+    ax.set_ylabel("Performance difference")
+    ax.set_xlabel("Chance of losing sequence")
+    ax.set_title("Performance difference in function of losing chance")
+    plt.show()
 
 
 def compare_multiple_games_setbacks():

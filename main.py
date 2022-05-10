@@ -66,37 +66,38 @@ if __name__ == '__main__':
         # print(team_as_player_setbacks.tail())
         # print(team_setbacks_over_matches.head())
         # print(team_setbacks_over_matches.tail())
+        print(team_setbacks_over_matches)
 
     # for c in ['team_name_short', 'team_name']:
     #     teams[c] = teams[c].apply(
     #         lambda x: x.encode('raw_unicode_escape').decode('utf-8')
     #     )
 
-    # games = games[games.competition_name != 'German first division']
-    games = games[games.competition_name == 'World Cup']
-    # games = games[games.competition_name == 'Italian first division']
-    all_actions = []
-    for game in tqdm(list(games.itertuples()), desc="Rating actions"):
-        actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
-        actions = actions[actions['period_id'] != 5]
-        actions = (
-            _spadl.add_names(actions)
-                .merge(players, how="left")
-                .merge(teams, how="left")
-                .sort_values(["game_id", "period_id", "action_id"])
-                .reset_index(drop=True)
-        )
-        # values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
-        actions = utils.add_total_seconds_to_game(actions)
-        # all_actions.append(pd.concat([actions, values], axis=1))
-        # actions = utils.add_player_diff(actions, game, all_events)
-        # actions = utils.add_goal_diff(actions)
-        all_actions.append(actions)
-
-    all_actions = pd.concat(all_actions).reset_index(drop=True)
-    # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
-    # print(all_actions.head())
-    print(all_actions[all_actions['type_name'] == 'take_on'])
+    # # games = games[games.competition_name != 'German first division']
+    # games = games[games.competition_name == 'World Cup']
+    # # games = games[games.competition_name == 'Italian first division']
+    # all_actions = []
+    # for game in tqdm(list(games.itertuples()), desc="Rating actions"):
+    #     actions = pd.read_hdf(spadl_h5, f"actions/game_{game.game_id}")
+    #     actions = actions[actions['period_id'] != 5]
+    #     actions = (
+    #         _spadl.add_names(actions)
+    #             .merge(players, how="left")
+    #             .merge(teams, how="left")
+    #             .sort_values(["game_id", "period_id", "action_id"])
+    #             .reset_index(drop=True)
+    #     )
+    #     # values = pd.read_hdf(predictions_h5, f"game_{game.game_id}")
+    #     actions = utils.add_total_seconds_to_game(actions)
+    #     # all_actions.append(pd.concat([actions, values], axis=1))
+    #     # actions = utils.add_player_diff(actions, game, all_events)
+    #     # actions = utils.add_goal_diff(actions)
+    #     all_actions.append(actions)
+    #
+    # all_actions = pd.concat(all_actions).reset_index(drop=True)
+    # # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
+    # # print(all_actions.head())
+    # print(all_actions[all_actions['type_name'] == 'take_on'])
     # # get_rating_analysis_and_store(games, all_actions)
     # store_rating_progression_per_player(all_actions, players, games, player_games)
     # print(round(all_actions, 4))
