@@ -20,18 +20,17 @@ from tqdm import tqdm
 
 import utils
 
-from typing import List
-
-
 warnings.filterwarnings('ignore')
 pd.set_option("display.max_rows", None, "display.max_columns", None)
 pd.set_option('display.width', 1000)
 
 
 def fix_passes(actions: pd.DataFrame) -> pd.DataFrame:
-    # Only consider passlike actions
+    print("Fixing passes...")
+
+    # Only consider passlike actions, take_on is considered as a pass to the player itself
     passlike = ['pass', 'cross', 'freekick_crossed', 'freekick_short', 'corner_crossed', 'corner_short', 'clearance',
-                'throw_in', 'goalkick']
+                'throw_in', 'goalkick', 'take_on']
     passes = actions[actions['type_name'].isin(passlike)]
 
     # Clearance always successful
@@ -39,13 +38,13 @@ def fix_passes(actions: pd.DataFrame) -> pd.DataFrame:
     passes['result_name'] = passes.apply(lambda x: 'success' if (x['type_name'] == 'clearance') else x['result_name'],
                                          axis=1)
 
-    # Goalkicks over 30m are always successful
+    # Goalkicks over 50m are always successful
     passes['result_id'] = passes.apply(lambda x: 1 if ((x['type_name'] == 'goalkick') & (
-            math.sqrt(pow(x['end_x'] - x['start_x'], 2) + pow(x['end_y'] - x['start_y'], 2)) > 30))
-            else x['result_id'], axis=1)
+            math.sqrt(pow(x['end_x'] - x['start_x'], 2) + pow(x['end_y'] - x['start_y'], 2)) > 50))
+    else x['result_id'], axis=1)
     passes['result_name'] = passes.apply(lambda x: 'success' if ((x['type_name'] == 'goalkick') & (
-            math.sqrt(pow(x['end_x'] - x['start_x'], 2) + pow(x['end_y'] - x['start_y'], 2)) > 30))
-            else x['result_name'], axis=1)
+            math.sqrt(pow(x['end_x'] - x['start_x'], 2) + pow(x['end_y'] - x['start_y'], 2)) > 50))
+    else x['result_name'], axis=1)
 
     # Set offside result to fail
     passes['result_id'] = passes.apply(lambda x: 0 if (x['result_id'] == 2) else x['result_id'], axis=1)
@@ -58,6 +57,7 @@ def fix_passes(actions: pd.DataFrame) -> pd.DataFrame:
 def add_features(passes: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
     passes_grouped_by_competition_id = passes.merge(games[['game_id', 'competition_id', 'competition_name']],
                                                     on='game_id').groupby('competition_id')
+    print("Adding features...")
 
     all_passes = []
     for competition_id, passes in passes_grouped_by_competition_id:
@@ -67,11 +67,15 @@ def add_features(passes: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
             events = pd.DataFrame(json.load(we))
 
         # Merge passes with wyscout events
-        passes = passes.merge(events[['id', 'subEventName', 'tags']], left_on='original_event_id', right_on='id')
+        passes = passes.merge(events[['id', 'subEventName', 'tags']], how='left', left_on='original_event_id',
+                              right_on='id')
 
-        # Remove duellike passes
-        duellike = ['Air duel', 'Ground attacking duel', 'Ground defending duel', 'Ground loose ball duel']
-        passes = passes[~passes['subEventName'].isin(duellike)]
+        passes.loc[passes['subEventName'].isnull(), 'subEventName'] = passes.loc[
+            passes['subEventName'].isnull(), 'type_name']
+
+        # Remove non-passlike actions
+        nonpasslike = ['Air duel', 'Ground loose ball duel', 'Simulation']
+        passes = passes[~passes['subEventName'].isin(nonpasslike)]
 
         # Add through_ball feature
         passes['tags'] = passes.apply(lambda x: [d['id'] for d in x['tags']], axis=1)
@@ -113,6 +117,7 @@ def compute_features_and_labels() -> pd.DataFrame:
     with pd.HDFStore(spadl_h5) as store:
         games = store['games'].merge(store['competitions'], how='left')
         players = store["players"]
+        # games = games[games['competition_name'] == 'World Cup']
 
         for game_id in tqdm(games.game_id, "Collecting all actions: "):
             actions = store['actions/game_{}'.format(game_id)]
@@ -132,6 +137,8 @@ def compute_features_and_labels() -> pd.DataFrame:
     # Fix passes and add features
     passes = fix_passes(all_actions)
     passes = add_features(passes, games)
+
+    print("Storing features and labels...")
 
     # Split passes into features and labels
     X = passes.drop(columns={'result_id'})
@@ -155,12 +162,12 @@ def compute_features_and_labels() -> pd.DataFrame:
     y_test = y[y['competition_name'].isin(utils.test_competitions)].drop(columns={'competition_name'})
 
     # Store data
-    data_h5 = "xP_data/passes.h5"
+    data_h5 = 'xP_data/passes.h5'
     with pd.HDFStore(data_h5) as datastore:
-        datastore["X_train"] = X_train
-        datastore["X_test"] = X_test
-        datastore["y_train"] = y_train
-        datastore["y_test"] = y_test
+        datastore['X_train'] = X_train
+        datastore['X_test'] = X_test
+        datastore['y_train'] = y_train
+        datastore['y_test'] = y_test
 
 
 def fit(learner, X: pd.DataFrame, y: pd.DataFrame, val_size=0.2, tree_params=None, fit_params=None):
@@ -170,7 +177,7 @@ def fit(learner, X: pd.DataFrame, y: pd.DataFrame, val_size=0.2, tree_params=Non
     eval_set = [(X_val, y_val)] if val_size > 0 else None
 
     # Use given learner to fit a model to the data
-    if learner == "xgboost":
+    if learner == 'xgboost':
         if tree_params is None:
             tree_params = dict(n_estimators=100, max_depth=6, objective='binary:logistic')
         if fit_params is None:
@@ -181,7 +188,7 @@ def fit(learner, X: pd.DataFrame, y: pd.DataFrame, val_size=0.2, tree_params=Non
         model = xgboost.XGBClassifier(**tree_params)
         return model.fit(X_train, y_train, **fit_params)
 
-    if learner == "catboost":
+    if learner == 'catboost':
         if tree_params is None:
             tree_params = dict(eval_metric='BrierScore', loss_function='Logloss', iterations=100)
         if fit_params is None:
@@ -193,7 +200,7 @@ def fit(learner, X: pd.DataFrame, y: pd.DataFrame, val_size=0.2, tree_params=Non
         model = catboost.CatBoostClassifier(**tree_params)
         return model.fit(X, y, **fit_params)
 
-    if learner == "lightgbm":
+    if learner == 'lightgbm':
         if tree_params is None:
             tree_params = dict(n_estimators=100, max_depth=6, objective='binary')
         if fit_params is None:
@@ -205,14 +212,14 @@ def fit(learner, X: pd.DataFrame, y: pd.DataFrame, val_size=0.2, tree_params=Non
         return model.fit(X, y, **fit_params)
 
 
-def train_model(filters=[], learner="xgboost", store=False, plot=True):
+def train_model(filters=[], learner='xgboost', store=False, plot=True):
     # Get the data
-    data_h5 = "xP_data/passes.h5"
+    data_h5 = 'xP_data/passes.h5'
     with pd.HDFStore(data_h5) as datastore:
-        X_train = datastore["X_train"]
-        X_test = datastore["X_test"]
-        y_train = datastore["y_train"]
-        y_test = datastore["y_test"]
+        X_train = datastore['X_train']
+        X_test = datastore['X_test']
+        y_train = datastore['y_train']
+        y_test = datastore['y_test']
 
     # Filter unwanted features from the feature set
     for feature in filters:
@@ -225,12 +232,12 @@ def train_model(filters=[], learner="xgboost", store=False, plot=True):
 
     # Fit the model and save
     model = fit(learner, X_train, y_train)
-    if learner == "xgboost":
-        model.save_model("xP_data/xP_XGBoost.txt")
-    if learner == "catboost":
-        model.save_model("xP_data/xP_CatBoost.txt")
-    if learner == "lightgbm":
-        model.booster_.save_model("xP_data/xP_lightgbm.txt")
+    if learner == 'xgboost':
+        model.save_model('xP_data/xP_XGBoost.txt')
+    if learner == 'catboost':
+        model.save_model('xP_data/xP_CatBoost.txt')
+    if learner == 'lightgbm':
+        model.booster_.save_model('xP_data/xP_lightgbm.txt')
 
     # Print some evaluation metrics for the model that has just been fitted
     evaluate(learner, X_test, y_test, filters)
@@ -250,18 +257,18 @@ def evaluate(learner, X_test: pd.DataFrame, y_test: pd.DataFrame, filters):
                 X_test = X_test.drop(columns={column})
 
     # Get the model and calculate y_hat and y_prob
-    if learner == "xgboost":
+    if learner == 'xgboost':
         model = xgboost.XGBClassifier()
-        model.load_model("xP_data/xP_XGBoost.txt")
+        model.load_model('xP_data/xP_XGBoost.txt')
         y_hat = model.predict(X_test)
         y_prob = model.predict_proba(X_test)[:, 1]
-    if learner == "catboost":
+    if learner == 'catboost':
         model = catboost.CatBoostClassifier()
-        model.load_model("xP_data/xP_CatBoost.txt")
+        model.load_model('xP_data/xP_CatBoost.txt')
         y_hat = model.predict(X_test)
         y_prob = model.predict_proba(X_test)[:, 1]
-    if learner == "lightgbm":
-        model = lightgbm.Booster(model_file="xP_data/xP_lightgbm.txt")
+    if learner == 'lightgbm':
+        model = lightgbm.Booster(model_file='xP_data/xP_lightgbm.txt')
         y_prob = model.predict(X_test)
         y_hat = np.round(y_prob)
 
@@ -283,29 +290,29 @@ def store_predictions(learner, X_test: pd.DataFrame, filters):
                 X_test = X_test.drop(columns={column})
 
     # Get model and calculate y_prob
-    if learner == "xgboost":
+    if learner == 'xgboost':
         model = xgboost.XGBClassifier()
-        model.load_model("xP_data/xP_XGBoost.txt")
+        model.load_model('xP_data/xP_XGBoost.txt')
         y_prob = model.predict_proba(X_test)[:, 1]
-    if learner == "catboost":
+    if learner == 'catboost':
         model = catboost.CatBoostClassifier()
-        model.load_model("xP_data/xP_CatBoost.txt")
+        model.load_model('xP_data/xP_CatBoost.txt')
         y_prob = model.predict_proba(X_test)[:, 1]
-    if learner == "lightgbm":
-        model = lightgbm.Booster(model_file="xP_data/xP_lightgbm.txt")
+    if learner == 'lightgbm':
+        model = lightgbm.Booster(model_file='xP_data/xP_lightgbm.txt')
         y_prob = model.predict(X_test)
 
-    X_test["exp_accuracy"] = y_prob
+    X_test['exp_accuracy'] = y_prob
 
     # Store exp_accuracy
-    predictions_h5 = "xP_data/predictions.h5"
+    predictions_h5 = 'xP_data/predictions.h5'
     with pd.HDFStore(predictions_h5) as store:
-        store["predictions"] = X_test[["exp_accuracy"]]
+        store['predictions'] = X_test[['exp_accuracy']]
 
     X_test.drop(columns=['exp_accuracy'], inplace=True)
 
 
-def plot_calibration(X_test: pd.DataFrame, y_test: pd.DataFrame, filters, learner="xgboost"):
+def plot_calibration(X_test: pd.DataFrame, y_test: pd.DataFrame, filters, learner='xgboost'):
     # Filter unwanted features from the feature set
     for feature in filters:
         for column in X_test.columns:
@@ -313,22 +320,108 @@ def plot_calibration(X_test: pd.DataFrame, y_test: pd.DataFrame, filters, learne
                 X_test = X_test.drop(columns={column})
 
     # Get model and calculate y_prob
-    if learner == "xgboost":
+    if learner == 'xgboost':
         model = xgboost.XGBClassifier()
-        model.load_model("xP_data/xP_XGBoost.txt")
+        model.load_model('xP_data/xP_XGBoost.txt')
         y_prob = model.predict_proba(X_test)[:, 1]
         y_hat = model.predict(X_test)
-    if learner == "catboost":
+    if learner == 'catboost':
         model = catboost.CatBoostClassifier()
-        model.load_model("xP_data/xP_CatBoost.txt")
+        model.load_model('xP_data/xP_CatBoost.txt')
         y_prob = model.predict_proba(X_test)[:, 1]
         y_hat = model.predict(X_test)
-    if learner == "lightgbm":
-        model = lightgbm.Booster(model_file="xP_data/xP_lightgbm.txt")
+    if learner == 'lightgbm':
+        model = lightgbm.Booster(model_file='xP_data/xP_lightgbm.txt')
         y_prob = model.predict(X_test)
         y_hat = np.round(y_prob)
 
-    disp = cal.CalibrationDisplay.from_predictions(y_true=y_test, y_prob=y_prob, n_bins=10)
+    X_test['exp_accuracy'] = y_prob
+
+    fig, ax = plt.subplots()
+    cal.CalibrationDisplay.from_predictions(y_true=y_test, y_prob=y_prob, n_bins=10,
+                                            name="Expected accuracy classifier", ax=ax)
+    ax.legend().set_zorder(2)
+    ax2 = ax.twinx()
+    weights = np.ones_like(y_prob) / len(y_prob)
+    ax2.hist(x=y_prob, bins=100, density=False, stacked=True, weights=weights, color='#B3B3B3')
+
+    plt.title("Calibration curve of the expected accuracy classifier")
+    plt.show()
+
+    type_aggregates = []
+    print("Total count: " + str(X_test.shape[0]))
+    for column in X_test.columns:
+        if 'type' in column:
+            type_aggregates.append(pd.DataFrame(
+                data={'Type': [column[5:]],
+                      'Count': [X_test[X_test[column]].shape[0]],
+                      'Average expected accuracy': [X_test.loc[X_test[column], 'exp_accuracy'].mean()],
+                      'Std of expected accuracy': [X_test.loc[X_test[column], 'exp_accuracy'].std()]
+                      }
+            ))
+
+    type_aggregates = pd.concat(type_aggregates).reset_index(drop=True)
+    print(type_aggregates)
+
+
+def plot_calibration_with_current_store():
+    filters = ['total_seconds', 'player_diff', 'score_diff']
+    learner = 'xgboost'
+
+    # Get the data
+    data_h5 = 'xP_data/passes.h5'
+    with pd.HDFStore(data_h5) as datastore:
+        X_test = datastore['X_test']
+        y_test = datastore['y_test']
+
+    plot_calibration(X_test=X_test, y_test=y_test, filters=filters, learner=learner)
+
+
+def plot_risk_ifo_position():
+    default_h5 = 'default_data/spadl.h5'
+
+    all_actions = []
+    with pd.HDFStore(default_h5) as store:
+        players = store['players']
+        games = store['games'].merge(store['competitions'], how='left')
+        games = games[games['competition_name'].isin(utils.test_competitions)]
+
+        for game_id in tqdm(games.game_id, "Collecting all actions: "):
+            actions = store['actions/game_{}'.format(game_id)]
+            actions = actions[actions['period_id'] != 5]
+            actions = spadl.add_names(actions).merge(players, how='left')
+            all_actions.append(actions)
+
+    all_actions = pd.concat(all_actions).dropna().set_index('original_event_id')
+
+    predictions_h5 = 'xP_data/predictions.h5'
+    with pd.HDFStore(predictions_h5) as predictionstore:
+        predictions = predictionstore['predictions']
+
+    passlike = ['pass', 'cross', 'freekick_crossed', 'freekick_short', 'corner_crossed', 'corner_short', 'clearance',
+                'throw_in', 'goalkick', 'take_on']
+    passes = all_actions[all_actions['type_name'].isin(passlike)]
+    passes_with_risk = passes.join(predictions)
+    passes_with_risk['risk'] = 1 - passes_with_risk['exp_accuracy']
+
+    grouped_by_position = passes_with_risk.groupby('position')
+    positions = ['Goalkeeper', 'Defender', 'Midfielder', 'Forward']
+    avg_risk = []
+    std_risk = []
+    for position in positions:
+        actions_by_pos = grouped_by_position.get_group(position)
+        avg_risk.append(actions_by_pos['risk'].mean())
+        std_risk.append(actions_by_pos['risk'].std())
+
+    x_pos = np.arange(len(positions))
+
+    fig, ax = plt.subplots()
+    ax.bar(x=x_pos, height=avg_risk, yerr=std_risk, ecolor='black', capsize=10)
+    ax.set_ylabel("Average risk")
+    ax.set_xlabel("Position")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(positions)
+    ax.set_title("Average risk taken per position")
 
     plt.show()
 
@@ -364,15 +457,15 @@ def predict_for_actions(actions: pd.DataFrame, games: pd.DataFrame):
 
     return X[['exp_accuracy']]
 
+
 def main():
-    # compute_features_and_labels(utils.train_competitions)
+    compute_features_and_labels()
     filters = ['total_seconds', 'player_diff', 'score_diff']
-    learner = "xgboost"
-    train_model(filters=filters, learner=learner, store=True, plot=True)
+    learner = 'xgboost'
+    train_model(filters=filters, learner=learner, store=False, plot=True)
 
 
 if __name__ == '__main__':
-    main()
-
-
-
+    # main()
+    plot_calibration_with_current_store()
+    # plot_risk_ifo_position()

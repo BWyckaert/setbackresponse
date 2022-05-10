@@ -198,7 +198,9 @@ def get_average_risk(actions: pd.DataFrame) -> float:
         predictions = predictionstore['predictions']
 
     actions_on_id = actions.dropna().set_index('original_event_id')
-    actions_on_id = actions_on_id[actions_on_id['type_name'] != 'interception']
+    passlike = ['pass', 'cross', 'freekick_crossed', 'freekick_short', 'corner_crossed', 'corner_short', 'clearance',
+                'throw_in', 'goalkick', 'take_on']
+    actions_on_id = actions_on_id[actions_on_id['type_name'].isin(passlike)]
     actions_with_risk = actions_on_id.join(predictions).dropna()
     actions_with_risk['risk'] = 1 - actions_with_risk['exp_accuracy']
 
@@ -243,14 +245,25 @@ def get_performance_per_minute_in_games(game_ids: List[int], team: str, actions:
     return vaep_per_minute
 
 
-def get_next_game(setback: pd.Series, games: pd.DataFrame):
+def get_next_games(setback: pd.Series, games: pd.DataFrame):
+    # Get the games in the competition in which the setback occurred
     games_in_competition = games[games['competition_name'] == setback.competition]
+
+    # Get the games in the competition played by the team suffering the setback
     team_games = games_in_competition[(games_in_competition['home_team_name_short'] == setback.team) |
                                       (games_in_competition['away_team_name_short'] == setback.team)]
-    games_after_setback = team_games[team_games['game_date'] > setback.game_date_last_loss]
-    first_game_after_setback = games_after_setback.iloc[0]
 
-    return first_game_after_setback
+    # Get the games played after the setback occurred
+    games_after_setback = team_games[team_games['game_date'] > setback.game_date_last_loss]
+
+    # Get the number of games played after the setback occurred
+    nb_games_after_setback = games_after_setback.shape[0]
+
+    # Get the first 5 games after the setback. If there are no 5 games, take all remaining games
+    nb_next_games = min(5, nb_games_after_setback)
+    next_games = games_after_setback.iloc[:nb_next_games]
+
+    return next_games
 
 
 def compare_response_by_losing_chance():

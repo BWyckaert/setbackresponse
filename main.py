@@ -96,7 +96,7 @@ if __name__ == '__main__':
     all_actions = pd.concat(all_actions).reset_index(drop=True)
     # all_actions = utils.left_to_right(games, pd.concat(all_actions), _spadl)
     # print(all_actions.head())
-    print(all_actions[all_actions['type_name'] == 'dribble'])
+    print(all_actions[all_actions['type_name'] == 'take_on'])
     # # get_rating_analysis_and_store(games, all_actions)
     # store_rating_progression_per_player(all_actions, players, games, player_games)
     # print(round(all_actions, 4))
