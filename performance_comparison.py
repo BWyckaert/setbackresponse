@@ -17,32 +17,131 @@ pd.set_option("display.max_rows", None, "display.max_columns", None)
 pd.set_option('display.width', 1000)
 
 
-def compare(setback: pd.Series, pof_a_actions: pd.DataFrame, pof_d_actions: pd.DataFrame, player_game: pd.Series,
+def weighted_average(performance: pd.DataFrame) -> pd.DataFrame:
+    total_actions = performance['number_of_actions'].sum()
+    total_minutes = performance['minutes_played'].sum()
+
+    vaep_per_action = performance['vaep_per_action'].mul(performance['number_of_actions']).sum() / total_actions
+    vaep_per_minute = performance['vaep_per_minute'].mul(performance['minutes_played']).sum() / total_minutes
+
+    time_on_ball_per_action = performance['time_on_ball_per_action'].mul(
+        performance['number_of_actions']).sum() / total_actions
+    time_on_ball_per_minute = performance['time_on_ball_per_minute'].mul(
+        performance['minutes_played']).sum() / total_minutes
+
+    success_rate_per_action = performance['success_rate_per_action'].mul(
+        performance['number_of_actions']).sum() / total_actions
+    risk_per_action = performance['risk_per_action'].mul(performance['number_of_actions']).sum() / total_actions
+    exp_success_rate_per_action = 1 - risk_per_action
+
+    minutes_played = performance['minutes_played'].sum()
+    number_of_actions = performance['number_of_actions'].sum()
+    actions_per_minute = number_of_actions / minutes_played
+
+    performance = pd.DataFrame(
+        data={'vaep_per_action': [vaep_per_action],
+              'vaep_per_minute': [vaep_per_minute],
+              'time_on_ball_per_action': [time_on_ball_per_action],
+              'time_on_ball_per_minute': [time_on_ball_per_minute],
+              'success_rate_per_action': [success_rate_per_action],
+              'exp_success_rate_per_action': [exp_success_rate_per_action],
+              'risk_per_action': [risk_per_action],
+              'minutes_played': [minutes_played],
+              'number_of_actions': [number_of_actions],
+              'actions_per_minute': [actions_per_minute]},
+        index=[0]
+    )
+    print()
+    print(performance)
+    print()
+
+    return performance
+
+
+def compare_over_games(player_id: int, a_actions: pd.DataFrame, d_actions: pd.DataFrame,
+                       player_games: pd.DataFrame, previous_game_ids_player: List[int],
+                       next_game_ids_player: List[int], consider_goals=True) -> pd.DataFrame:
+    comparison = []
+    for comp_games in [previous_game_ids_player, next_game_ids_player]:
+        performance = []
+        for game_id in comp_games:
+            players_in_game = player_games[player_games['game_id'] == game_id].set_index('player_id')
+            player_game = players_in_game.loc[player_id]
+            game_duration = players_in_game['minutes_played'].max()
+
+            a_game_actions = a_actions[a_actions['game_id'] == game_id]
+            d_game_actions = d_actions[d_actions['game_id'] == game_id]
+
+            pof_a_actions = utils.get_player_on_field_actions(a_game_actions, player_game, game_duration)
+            pof_d_actions = utils.get_player_on_field_actions(d_game_actions, player_game, game_duration)
+
+            a_player_actions = pof_a_actions[pof_a_actions['player_id'] == player_id]
+            d_player_actions = pof_d_actions[pof_d_actions['player_id'] == player_id]
+
+            first_action = pof_a_actions.iloc[0]
+            last_action = pof_a_actions.iloc[-1]
+
+            vaep = get_vaep_aggregates(a_player_actions, first_action, last_action, consider_goals, True)
+            time_on_ball = get_time_on_ball_aggregates(a_player_actions, first_action, last_action)
+            success_rate = get_success_rate(d_player_actions)
+            minutes_played = player_game.minutes_played
+            number_of_actions = d_player_actions.shape[0]
+            risk = get_average_risk(d_player_actions)
+            exp_success_rate = 1 - risk
+            actions_per_minute = d_player_actions.shape[0] / minutes_played
+
+            performance.append(pd.DataFrame(
+                data={'vaep_per_action': [vaep[0]],
+                      'vaep_per_minute': [vaep[1]],
+                      'time_on_ball_per_action': [time_on_ball[0]],
+                      'time_on_ball_per_minute': [time_on_ball[1]],
+                      'success_rate_per_action': [success_rate],
+                      'exp_success_rate_per_action': [exp_success_rate],
+                      'risk_per_action': [risk],
+                      'minutes_played': [minutes_played],
+                      'number_of_actions': [number_of_actions],
+                      'actions_per_minute': [actions_per_minute]},
+                index=[game_id]
+            ))
+
+        comparison.append(weighted_average(pd.concat(performance)))
+
+    diff = comparison[1] - comparison[0]
+    rel_diff = diff / comparison[0]
+
+    comparison.append(diff)
+    comparison.append(rel_diff)
+
+    comparison = pd.concat(comparison).reset_index(drop=True).rename(
+        index={0: 'before_setback', 1: 'after_setback', 2: 'difference', 3: 'relative_difference'})
+
+    summary = round(comparison, 4)
+
+    return summary
+
+
+def compare(setback: pd.Series, a_actions: pd.DataFrame, d_actions: pd.DataFrame, player_game: pd.Series,
             game_duration: int, consider_goals=True) -> pd.DataFrame:
     """
     Compare the performance of the player suffering the setback before and after the setback.
 
     :param setback: a setback
-    :param pof_a_actions: atomic actions
-    :param pof_d_actions: non atomic actions
+    :param a_actions: atomic actions during the game of the setback
+    :param d_actions: non atomic actions during the game of the setback
     :param player_game: the game in which the setback occurs
     :param game_duration: the duration of the game in which the setback occurs
     :param consider_goals: whether or not to consider goals in the performance comparison
     :return: a dataframe comparing performance before and after the setback
     """
-    # Get the action that is a setback
-    # a_setback_action = a_actions[(a_actions['period_id'] == setback.period_id) &
-    #                              (a_actions['time_seconds'] == setback.time_seconds)].iloc[0]
-
     # Only consider actions where player of setback is on field
-    pof_a_actions = utils.get_player_on_field_actions(pof_a_actions, player_game, game_duration, setback)
-    pof_d_actions = utils.get_player_on_field_actions(pof_d_actions, player_game, game_duration, setback)
+    pof_a_actions = utils.get_player_on_field_actions(a_actions, player_game, game_duration, setback)
+    pof_d_actions = utils.get_player_on_field_actions(d_actions, player_game, game_duration, setback)
 
     # Get atomic player actions before and after the setback
     a_actions_before, a_actions_after = get_before_after(setback, pof_a_actions)
 
     # Get vaep-rating before and after the setback
-    vaep_before = get_vaep_aggregates(a_actions_before, pof_a_actions.iloc[0], setback, consider_goals)
+    vaep_before = get_vaep_aggregates(a_actions_before, pof_a_actions.iloc[0], setback, consider_goals, True)
     vaep_after = get_vaep_aggregates(a_actions_after, setback, pof_a_actions.iloc[-1], consider_goals, False)
 
     # Get time on the ball before and after the setback
@@ -64,16 +163,31 @@ def compare(setback: pd.Series, pof_a_actions: pd.DataFrame, pof_d_actions: pd.D
     risk_before = get_average_risk(d_actions_before)
     risk_after = get_average_risk(d_actions_after)
 
+    # Get the expected success rate, based on the risk
+    exp_success_rate_before = 1 - risk_before
+    exp_success_rate_after = 1 - risk_after
+
+    # Get the number of actions before and after the setback
+    number_of_actions_before = d_actions_before.shape[0]
+    number_of_actions_after = d_actions_after.shape[0]
+
+    # Get the actions per minute
+    actions_per_minute_before = d_actions_before.shape[0] / minutes_played_before
+    actions_per_minute_after = d_actions_after.shape[0] / minutes_played_after
+
     # Put data in dataframe
     comparison = pd.DataFrame(
         data={'vaep_per_action': data_to_list(vaep_before[0], vaep_after[0]),
               'vaep_per_minute': data_to_list(vaep_before[1], vaep_after[1]),
-              'avg_time_on_ball': data_to_list(time_on_ball_before[0], time_on_ball_after[0]),
+              'time_on_ball_per_action': data_to_list(time_on_ball_before[0], time_on_ball_after[0]),
               'time_on_ball_per_minute': data_to_list(time_on_ball_before[1], time_on_ball_after[1]),
-              'success_rate': data_to_list(success_rate_before, success_rate_after),
-              'avg_risk': data_to_list(risk_before, risk_after),
-              'minutes_played': data_to_list(minutes_played_before, minutes_played_after)},
-        index=['before_setback', 'after_setback', 'difference', 'relative difference']
+              'success_rate_per_action': data_to_list(success_rate_before, success_rate_after),
+              'exp_success_rate_per_action': data_to_list(exp_success_rate_before, exp_success_rate_after),
+              'risk_per_action': data_to_list(risk_before, risk_after),
+              'minutes_played': data_to_list(minutes_played_before, minutes_played_after),
+              'number_of_actions': data_to_list(number_of_actions_before, number_of_actions_after),
+              'actions_per_minute': data_to_list(actions_per_minute_before, actions_per_minute_after)},
+        index=['before_setback', 'after_setback', 'difference', 'relative_difference']
     )
 
     summary = round(comparison, 4)
@@ -126,13 +240,10 @@ def get_vaep_aggregates(player_actions: pd.DataFrame, first: pd.Series, last: pd
     action_scale = per_action / mean_action
     minute_scale = per_minute / mean_minute
 
-    # if not consider_goals:
-    #     goal_actions = ['goal', 'owngoal', 'bad_touch']
-    #     vaep_action = player_actions[~player_actions['type_name'].isin(goal_actions)][
-    #         'vaep_value'].mean() if not player_actions.empty else 0
-    #     vaep_minute = [~player_actions['type_name'].isin(goal_actions)]['vaep_value'].sum() / (
-    #             (last.total_seconds - first.total_seconds) / 60)
-    # else:
+    # TODO redo consider goals
+    if not consider_goals:
+        goal_actions = ['goal', 'owngoal', 'bad_touch']
+
 
     chunk_size = 10
     player_actions['time_chunck'] = player_actions.apply(
@@ -171,24 +282,26 @@ def get_time_on_ball_aggregates(player_actions: pd.DataFrame, first: pd.Series, 
         time_diff = cons_actions.iloc[-1]['time_seconds'] - cons_actions.iloc[0]['time_seconds']
         time_on_ball.append(time_diff if time_diff != 0 else 1)
 
-    avg_time_on_ball = stat.mean(time_on_ball) if time_on_ball else 0
+    time_on_ball_per_action = stat.mean(time_on_ball) if time_on_ball else 0
     time_on_ball_per_minute = sum(time_on_ball) / ((last.total_seconds - first.total_seconds) / 60)
 
-    return avg_time_on_ball, time_on_ball_per_minute
+    return time_on_ball_per_action, time_on_ball_per_minute
 
 
 def get_success_rate(player_actions: pd.DataFrame) -> float:  # Requires non-atomic actions!!
-    success = player_actions[player_actions['result_name'] == 'success'].shape[0]
-    fail = player_actions[player_actions['result_name'] != 'success'].shape[0]
+    passlike = ['pass', 'cross', 'freekick_crossed', 'freekick_short', 'corner_crossed', 'corner_short', 'clearance',
+                'throw_in', 'goalkick', 'take_on']
+    passes = player_actions[player_actions['type_name'].isin(passlike)]
+
+    success = passes[passes['result_name'] == 'success'].shape[0]
+    fail = passes[passes['result_name'] != 'success'].shape[0]
+
     if success == 0 and fail == 0:
         return 0
 
     success_rate = success / (success + fail)
 
     return success_rate
-
-
-# def get_expected_success_rate(player_actions: pd.DataFrame) -> float:
 
 
 def get_average_risk(actions: pd.DataFrame) -> float:
@@ -218,16 +331,48 @@ def get_responses(player_setbacks: pd.DataFrame, player_games: pd.DataFrame, a_a
             game_duration = players_in_game['minutes_played'].max()
             atomic_game_actions = a_actions[a_actions['game_id'] == player_setback.game_id]
             game_actions = d_actions[d_actions['game_id'] == player_setback.game_id]
+
             response = compare(player_setback, atomic_game_actions, game_actions, player_game, game_duration, True)
+
             responses[player_setback.setback_id] = response
         except:
             continue
 
-        # print()
-        # print(response)
-        # print()
-
     return responses
+
+
+def get_responses_over_multiple_games(team_setbacks: pd.DataFrame, player_games: pd.DataFrame, a_actions: pd.DataFrame,
+                                      d_actions: pd.DataFrame, games: pd.DataFrame) -> Dict[
+    Tuple[int, int], pd.DataFrame]:
+    responses: Dict[Tuple[int, int], pd.DataFrame] = {}
+    for team_setback in tqdm(list(team_setbacks.itertuples()), desc="Comparing performance: "):
+        # Only consider players who played in at least half of the lost games
+        player_ids = utils.players_in_majority_of_games(player_games, team_setback.lost_games)
+
+        previous_game_ids = get_previous_games(team_setback, games)
+        next_game_ids = get_next_games(team_setback, games)
+
+        if len(previous_game_ids) < 3 or len(next_game_ids) < 3:
+            continue
+
+        # Of the players who played in at least half of the lost games, consider only those who played in the majority
+        # of comparison games (3-5 games) before and after the lost games
+        player_ids = list(set(player_ids) & set(utils.players_in_majority_of_games(player_games, previous_game_ids)))
+        player_ids = list(set(player_ids) & set(utils.players_in_majority_of_games(player_games, next_game_ids)))
+
+        for player_id in player_ids:
+            previous_game_ids_player = player_games[
+                player_games['game_id'].isin(previous_game_ids) & (player_games['player_id'] == player_id)][
+                'game_id'].tolist()
+            next_game_ids_player = player_games[
+                player_games['game_id'].isin(next_game_ids) & (player_games['player_id'] == player_id)][
+                'game_id'].tolist()
+
+            response = compare_over_games(player_id, a_actions, d_actions, player_games,
+                                          previous_game_ids_player, next_game_ids_player)
+            break
+
+        break
 
 
 def get_performance_per_minute_in_games(game_ids: List[int], team: str, actions: pd.DataFrame,
@@ -305,7 +450,6 @@ def compare_response_by_losing_chance():
         teams = store['teams']
 
     games = games[games['competition_name'].isin(utils.test_competitions)]
-    # games = games[games['competition_name'].isin(['World Cup'])]
 
     with pd.HDFStore(setbacks_h5) as store:
         cons_loss_setbacks = store['team_setbacks_over_matches']
@@ -313,8 +457,8 @@ def compare_response_by_losing_chance():
     cons_loss_setbacks = cons_loss_setbacks[
         cons_loss_setbacks.apply(lambda x: set(x['lost_games']).issubset(set(games['game_id'])), axis=1)]
 
-    # cons_loss_setbacks['nb_games'] = cons_loss_setbacks.apply(lambda x: len(x['lost_games']), axis=1)
-    # cons_loss_setbacks = cons_loss_setbacks[cons_loss_setbacks['nb_games'] > 1]
+    cons_loss_setbacks['nb_games'] = cons_loss_setbacks.apply(lambda x: len(x['lost_games']), axis=1)
+    cons_loss_setbacks = cons_loss_setbacks[cons_loss_setbacks['nb_games'] > 0]
 
     all_actions = []
     for game_id in tqdm(list(games.game_id), desc="Rating actions"):
@@ -351,20 +495,17 @@ def compare_response_by_losing_chance():
 
     bins = pd.cut(x=setback_aggregates['chance'], bins=np.arange(0, 0.35, 0.05),
                   labels=['0.0-0.5', '0.5-1.0', '1.0-1.5', '1.5-2.0', '2.0-2.5', '2.5-3.0'])
-    perf_diff_avg = setback_aggregates.groupby(bins).agg({'perf_diff': 'mean'})
-    perf_diff_std = setback_aggregates.groupby(bins).agg({'perf_diff': 'std'})
-    perf_diff_median = setback_aggregates.groupby(bins).aggregate({'perf_diff': 'median'})
+    perf_diff = setback_aggregates.groupby(bins).agg({'perf_diff': ['mean', 'std', 'median']})
 
-    print(perf_diff_avg)
-    print(perf_diff_std)
-    print(perf_diff_median)
+    print(perf_diff)
 
-    fig, ax = plt.subplots(figsize=(7, 4.8))
-    ax.errorbar(perf_diff_avg.index, perf_diff_avg['perf_diff'], yerr=perf_diff_std['perf_diff'], ecolor='black',
+    fig, ax = plt.subplots()
+    ax.errorbar(perf_diff.index, perf_diff['perf_diff', 'mean'], yerr=perf_diff['perf_diff', 'std'], ecolor='black',
                 capsize=10)
     ax.set_ylabel("Performance difference")
     ax.set_xlabel("Chance of losing sequence")
     ax.set_title("Performance difference in function of losing chance")
+    plt.tight_layout()
     plt.show()
 
 
@@ -375,13 +516,44 @@ def compare_multiple_games_setbacks():
     a_predictions_h5 = 'atomic_data/predictions.h5'
 
     with pd.HDFStore(atomic_h5) as store:
-        games = store['games'].merge(store['competitions'], how='left')
-        player_games = store['player_games']
+        games = (
+            store["games"]
+                .merge(store["competitions"], how='left')
+                .merge(store["teams"].add_prefix('home_'), how='left')
+                .merge(store["teams"].add_prefix('away_'), how='left')
+        )
+        player_games = store['player_games'].merge(store['teams'], how='left')
 
-    games = games[games['competition_name'].isin(utils.test_competitions)]
+    # games = games[games['competition_name'].isin(utils.test_competitions)]
+    games = games[games['competition_name'] == 'Italian first division']
 
     with pd.HDFStore(setbacks_h5) as store:
-        team_setbacks = store['team_setbacks']
+        cons_loss_setbacks = store['team_setbacks_over_matches']
+
+    cons_loss_setbacks = cons_loss_setbacks[cons_loss_setbacks['chance'] < 0.20]
+    cons_loss_setbacks = cons_loss_setbacks[cons_loss_setbacks['competition'] == 'Italian first division']
+
+    a_actions = []
+    d_actions = []
+    for game_id in tqdm(list(games.game_id), desc="Rating actions"):
+        actions = pd.read_hdf(atomic_h5, 'actions/game_{}'.format(game_id))
+        actions = actions[actions['period_id'] != 5]
+        actions = aspadl.add_names(actions)
+        actions = utils.add_goal_diff_atomic(actions)
+        actions = utils.map_big_goal_diff(actions)
+        values = pd.read_hdf(a_predictions_h5, 'game_{}'.format(game_id))
+        a_actions.append(pd.concat([actions, values], axis=1))
+
+        actions = pd.read_hdf(default_h5, 'actions/game_{}'.format(game_id))
+        actions[actions['period_id'] != 5]
+        d_actions.append(spadl.add_names(actions))
+
+    a_actions = pd.concat(a_actions).reset_index(drop=True)
+    a_actions = utils.add_total_seconds(a_actions, games)
+    d_actions = pd.concat(d_actions).reset_index(drop=True)
+    d_actions = utils.add_total_seconds(d_actions, games)
+
+    responses = get_responses_over_multiple_games(cons_loss_setbacks, player_games, a_actions, d_actions, games)
 
 
 def compare_ingame_setbacks():
@@ -587,7 +759,8 @@ def compare_for_players(setback_type: str, player_ids: List[int], metric='vaep_p
 
 
 def main():
-    compare_response_by_losing_chance()
+    # compare_response_by_losing_chance()
+    compare_multiple_games_setbacks()
     # compare_ingame_setbacks()
     # get_average_response()
 
@@ -600,7 +773,7 @@ def main():
 
     vpa = 'vaep_per_action'
     vpm = 'vaep_per_minute'
-    atob = 'avg_time_on_ball'
+    tobpa = 'time_on_ball_per_action'
     tobpm = 'time_on_ball_per_minute'
     sr = 'success_rate'
     ar = 'avg_risk'

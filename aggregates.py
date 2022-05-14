@@ -126,22 +126,11 @@ def _get_setback_aggregates(player_setbacks: pd.DataFrame, team_setbacks: pd.Dat
     return aggregates
 
 
-def _players_in_majority_of_games(player_games: pd.DataFrame, game_ids: list) -> list:
-    # Get the players who played in the majority of the given games
-    games = player_games[player_games['game_id'].isin(game_ids)]
-    nb_games_per_player = games['player_id'].value_counts()
-    majority_games_played = nb_games_per_player[nb_games_per_player > int(len(game_ids) / 2)]
-
-    player_list = majority_games_played.index.tolist()
-
-    return player_list
-
-
 def _extend_with_playerlist(team_setbacks_over_matches: pd.DataFrame, player_games: pd.DataFrame) -> pd.DataFrame:
     # Extend a teams setback over multiple games with a column containing the players who played the majority of those
     # games
     team_setbacks_over_matches['playerlist'] = team_setbacks_over_matches.apply(
-        lambda x: _players_in_majority_of_games(player_games, x['lost_games']), axis=1
+        lambda x: utils.players_in_majority_of_games(player_games, x['lost_games']), axis=1
     )
 
     return team_setbacks_over_matches

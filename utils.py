@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 
 import pandas as pd
 
@@ -212,7 +212,7 @@ def get_label(time_chunk: int, chunk_size: int) -> str:
 
 
 def get_player_on_field_actions(actions: pd.DataFrame, player_game: pd.Series, game_duration: int,
-                                setback: pd.Series) -> pd.DataFrame:
+                                setback: Optional[pd.Series] = None) -> pd.DataFrame:
     """
     Get the actions in the game which are executed when the player suffering the setback is on the field.
 
@@ -225,11 +225,32 @@ def get_player_on_field_actions(actions: pd.DataFrame, player_game: pd.Series, g
     if player_game.minutes_played == game_duration:
         return actions
 
-    maximum = max(player_game.minutes_played, setback.total_seconds / 60)
+    if setback is None:
+        maximum = player_game.minutes_played
+    else:
+        maximum = max(player_game.minutes_played, setback.total_seconds / 60)
+
     if player_game.is_starter:
         return actions[(actions['total_seconds'] / 60) <= maximum]
     else:
         return actions[(actions['total_seconds'] / 60) >= (game_duration - player_game.minutes_played) - 1]
+
+
+def players_in_majority_of_games(player_games: pd.DataFrame, game_ids: List[int]) -> List[int]:
+    """
+    Get the player ids who played in at least half of the given games.
+
+    :param player_games: a dataframe of player games
+    :param game_ids: a list of game ids
+    :return: a list of the player ids who played in at least half of the given games
+    """
+    games = player_games[player_games['game_id'].isin(game_ids)]
+    nb_games_per_player = games['player_id'].value_counts()
+    majority_games_played = nb_games_per_player[nb_games_per_player > int(len(game_ids) / 2)]
+
+    player_list = majority_games_played.index.tolist()
+
+    return player_list
 
 
 def convert_wyscout_to_h5():
